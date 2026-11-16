@@ -1067,6 +1067,7 @@ display:flex;align-items:center;justify-content:center;animation:fadeIn .18s eas
 border-radius:16px;padding:18px 20px 16px;box-shadow:0 18px 50px rgba(20,15,40,.35)}
 .updMH{font-size:var(--fs-lg);font-weight:800;color:var(--ink)}
 .updMH small{font-weight:700;color:var(--muted);margin-left:6px}
+.updMI{margin:10px 0 0;color:var(--muted);font-size:var(--fs-sm);line-height:1.6}
 .updML{margin:11px 0 2px;padding-left:18px;color:var(--ink2);font-size:var(--fs-sm);line-height:1.7}
 .updML li{margin-top:4px}
 .updML .more{color:var(--muted)}
