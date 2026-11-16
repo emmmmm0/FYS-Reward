@@ -76,10 +76,10 @@ if __name__ == "__main__":
     if one_bin:
         os.makedirs(os.path.join(tmp, "terr"), exist_ok=True)
         shutil.copy2(os.path.join(terr_src, one_bin), os.path.join(tmp, "terr", one_bin))
-    # 2026-11-15 起安装包**不带地形**（按需从托管下载），所以这里不再要求有 terr\
-    check("干净目录：exe + _internal + 预览壳（地形按需下载）",
+    # 2026-11-16 起安装包**不带地形也不带预览壳**（都按需从托管下载）
+    check("干净目录：exe + _internal（壳与地形按需下载）",
           os.path.exists(dst) and os.path.isdir(os.path.join(tmp, "_internal"))
-          and os.path.exists(os.path.join(tmp, "preview3d.html")),
+          and not os.path.exists(os.path.join(tmp, "preview3d.html")),
           sorted(os.listdir(tmp))[:8])
 
     # GSI 默认开启：冒烟时别去改用户真实 CS2 目录里的配置（只探测不写盘）
@@ -180,23 +180,26 @@ if __name__ == "__main__":
         c, raw = get("/api/preview")
         check("GET /api/preview 200（预览壳状态可查）", c == 200, "HTTP %s" % c)
 
-        # 预览壳：v2.14 起随包（不再从云端下载），本地 shell 必须与包内那份一致
-        local_shell = ""
-        for cand in (os.path.join(HERE, "preview3d.html"),
-                     os.path.join(HERE, "..", "地图实体预览-3D视图.html")):
-            if os.path.exists(cand):
-                local_shell = os.path.abspath(cand)
-                break
-        want = os.path.getsize(local_shell) if local_shell else 0
+        # 预览壳：2026-11-16 起**不随包**，首次请求触发云端按需下载（多源逐试）。
+        # 网络挂时回落「缺失提示页」（HTTP 200 小体积）——断言只锁不变量：
+        # 要么完整整页壳（顺带校验与 dev 源一致），要么明确的缺失提示，绝不半截。
+        local_shell = os.path.join(HERE, "..", "..", "preview3d.html")
+        want = os.path.getsize(local_shell) if os.path.exists(local_shell) else 0
         t0 = time.time()
         c, raw = get("/preview3d", timeout=120)
         dt = time.time() - t0
         got = os.path.join(tmp, "preview3d.html")
         gs = os.path.getsize(got) if os.path.exists(got) else 0
-        check("GET /preview3d 200 且整页可用", c == 200 and len(raw) > 1024 * 1024,
+        full = len(raw) > 1024 * 1024
+        miss = 0 < len(raw) < 65536
+        check("GET /preview3d 整页壳或缺失提示（壳不随包，按需下载）",
+              c == 200 and (full or miss),
               "HTTP %s %.1f MB 用时 %.1fs" % (c, len(raw) / 1048576.0, dt))
-        check("预览壳 = 包内那份（离线不联网）",
-              bool(want) and gs == want, "%d vs %d" % (gs, want))
+        if full:
+            check("云端壳与 dev 源一致", gs == want and want > 0, "%d vs %d" % (gs, want))
+        else:
+            check("云端不可达时回落缺失提示页（网络波动属预期，不算壳坏）",
+                  miss, "缺失页 %d B" % len(raw))
 
         # 地形：随包分包直接命中；缺失时立刻 404（不再等云端超时）
         if one_bin:
