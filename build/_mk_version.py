@@ -50,12 +50,13 @@ def main():
     ver = top["ver"]
     name = "FYS-Reward-%s.exe" % ver
     # 下载地址（update_apply 逐个试，每个地址 2 次）：
-    #   raw 直连最快 → ghproxy 转 Release 资产（国内常用镜像）→ jsDelivr → Release 原件
+    #   gh-proxy 走 Release 资产实测最快（6.9MB/3.7s）→ jsDelivr → raw → ghproxy → 原件
     rel_url = "https://github.com/emmmmm0/FYS-Reward/releases/download/%s/%s" % (ver, name)
     urls = [
+        "https://gh-proxy.com/" + rel_url,
+        "https://cdn.jsdelivr.net/gh/emmmmm0/FYS-Reward@main/dist/%s" % name,
         "https://raw.githubusercontent.com/emmmmm0/FYS-Reward/main/dist/%s" % name,
         "https://ghproxy.net/" + rel_url,
-        "https://cdn.jsdelivr.net/gh/emmmmm0/FYS-Reward@main/dist/%s" % name,
         rel_url,
     ]
     data = {"ver": ver, "date": top.get("date", ""), "size": len(b),
