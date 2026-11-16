@@ -1,16 +1,16 @@
 {
  "ver": "v2.16",
  "date": "2026-11-10",
- "size": 6907871,
+ "size": 6910447,
  "file": "FYS-Reward-v2.16.exe",
  "urls": [
-  "https://gh-proxy.com/https://github.com/emmmmm0/FYS-Reward/releases/download/v2.16/FYS-Reward-v2.16.exe",
+  "https://gh-proxy.com/https://raw.githubusercontent.com/emmmmm0/FYS-Reward/main/dist/FYS-Reward-v2.16.exe",
   "https://cdn.jsdelivr.net/gh/emmmmm0/FYS-Reward@main/dist/FYS-Reward-v2.16.exe",
   "https://raw.githubusercontent.com/emmmmm0/FYS-Reward/main/dist/FYS-Reward-v2.16.exe",
-  "https://ghproxy.net/https://github.com/emmmmm0/FYS-Reward/releases/download/v2.16/FYS-Reward-v2.16.exe",
-  "https://github.com/emmmmm0/FYS-Reward/releases/download/v2.16/FYS-Reward-v2.16.exe"
+  "https://ghproxy.net/https://raw.githubusercontent.com/emmmmm0/FYS-Reward/main/dist/FYS-Reward-v2.16.exe"
  ],
- "sha256": "4a9661b1b140ca13a7a3e87cbc4242a4b451d54794fc07301bb0ae56e62a4ecb",
+ "sha256": "09365abb4268f91d77a91fceba55a4143573c1db121039826f54430544b3e202",
+ "intro": "v2.16 更新内容（下面每一条对应一个改动）：",
  "notes": [
   "**对局战绩（「屏幕覆盖」页 → 📊 战绩分栏）**：开启 CS2 游戏状态集成后，每局自动",
   "记录地图 / 关卡 / 比分 / 时长 / K-D-A / 本局伤害，并可联动显示该图该关的",
@@ -43,6 +43,10 @@
   "不通过一律不替换（地形分包同样托管在 GitHub，按需下载）",
   "**屏幕覆盖小窗字号可调到 8**：滑杆下限从 16 改为 8、一步 1 档；小字号下标签与",
   "数值同步缩放，卡片 / 单行 / 图标 / 皮肤四种布局都不裁切",
+  "**安装包瘦身 14.7MB**：预览壳不再打进 zip，改托管在 GitHub，首次点开",
+  "「实体预览」时自动多源下载并缓存（之后离线也能看，与地形同一套路）",
+  "在线下载（更新 / 预览壳 / 地形）镜像按实测重排：gh-proxy 最快放首选，",
+  "ghproxy.net 等多源自动兜底，单源限流或挂掉不影响使用",
   "**GSI 显示「已开启 · 等待游戏推送」却一直收不到数据**：现在会区分三种情况并写清楚——",
   "游戏没开（等它启动）、配置写在游戏启动之后（提示「需要重启 CS2」，实测就是这条）、",
   "已经连上；同时放宽了 token 与 Host 头校验（CS2 不回传 auth 时也能正常接收）",
