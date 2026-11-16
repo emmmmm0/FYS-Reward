@@ -1312,7 +1312,9 @@ function pvMask(html){
     if(bar){ bar.style.position='relative'; bar.style.zIndex='61'; }
     if(!document.getElementById('pvbarCss')){
       var st=document.createElement('style'); st.id='pvbarCss';
-      st.textContent='@keyframes pvbar{0%{margin-left:-64%}100%{margin-left:100%}}';
+      st.textContent='@keyframes pvbar{0%{margin-left:-37%}100%{margin-left:100%}}';
+      /* 0% 起点定在 -37%（填充 38% 宽 → 右缘始终露出 1%）：原 -64% 起点每圈有
+         1/6 时间整条完全隐形，2026-11-16 用户截图恰好抓到，看起来像「没有进度条 */
       document.head.appendChild(st);
     }
     v.appendChild(el);
@@ -1330,12 +1332,18 @@ function pvBar(){
 function pvReady(cb){
   get('/api/preview').then(function(d){
     if(d && d.ready){ cb(true); return; }
-    var mb=(d&&d.need)||16.3;
+    /* 体积文案只认后端实测值：以前这里兜底写死 16.3，与仓库里的壳（14.7MB）不符 */
+    var mb=(d&&d.need)||0;
     var upd=!!(d&&d.stale);   /* 有本地缓存但云端已更新 → 文案换成「自动更新」 */
     /* 真实进度：半秒轮一次 /api/preview/progress（后端流式写盘并计数），拿到 total 就换确定进度条 */
     var paint=function(p){
       var bar;
-      if(p && p.phase==='download'){
+      if(p && p.phase==='connect'){
+        /* 还在逐源试连接（源挂起时后端最多等 45s 换下一个）：明确告诉玩家卡在哪 */
+        bar=pvBar()
+          +'<div style="font-size:var(--fs-xs);color:var(--muted,#999);margin-top:3px">正在连接镜像源 '
+          +esc(p.src||'')+' …</div>';
+      } else if(p && p.phase==='download'){
         if(p.total){
           var pct=Math.min(100,Math.round(p.got/p.total*100));
           bar='<div style="margin-top:10px;width:230px;height:6px;border-radius:3px;'
@@ -1358,7 +1366,7 @@ function pvReady(cb){
     paint(null);
     var pt=setInterval(function(){
       get('/api/preview/progress').then(function(p){
-        if(p && p.phase==='download') paint(p);
+        if(p && (p.phase==='download'||p.phase==='connect')) paint(p);
       }).catch(function(){});
     },500);
     get('/api/preview/fetch').then(function(r){
@@ -1375,9 +1383,14 @@ function pvReady(cb){
         var rb=document.getElementById('pvRetry');
         if(rb) rb.onclick=function(){
           pvMask('<div style="font-weight:500">正在重新连接…</div>'+pvBar());
-          var f=$('preFrame');
-          if(f) f.removeAttribute('data-live');
-          preEmbedOn();
+          /* ⚠ 必须重走 pvReady：它才会重新打 /api/preview/fetch（带真实进度）。
+             原来这里是 preEmbedOn()，只是把 iframe 指回 /preview3d —— 服务端
+             壳还是缺的，于是又 502，玩家点了等于没点（2026-11-16 反馈）。 */
+          pvReady(function(ok2){
+            if(!ok2) return;          /* 失败时 pvReady 内部会重新画失败遮罩（带按钮） */
+            var f=$('preFrame'); if(f) f.removeAttribute('data-live');
+            preEmbedOn();
+          });
         };
         cb(false);
       }
