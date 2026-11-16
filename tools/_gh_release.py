@@ -85,10 +85,24 @@ def main():
     if meta.get("intro"):
         body += [meta["intro"], ""]
     body += ["- " + it for it in items]
-    body += ["", "### 下载", "",
-             "- `云朵小铺-FYS通关奖励看板.zip`：完整包（解压即用，免安装；3D 预览与地形联网自动下载）",
-             "- `%s-full.zip`：全量版（预览页 + 全部地形内置，离线也能看 3D，体积大很多）" % args.ver,
-             "", "> 首次使用推荐精简版；想完全离线就下全量版；已在旧版的用户可在软件内直接检查更新。"]
+    def _mb(p):
+        try:
+            return "%.1f MB" % (os.path.getsize(p) / 1048576.0)
+        except OSError:
+            return ""
+
+    # ⚠ 资产名必须写「上传后的名字」（脚本会重命名成 v2.16.zip / v2.16-full.zip），
+    # 写本地文件名会让玩家在 Releases 页面找不到对应文件（2026-11-16 反馈）。
+    zp, zf = _mb(args.zip), _mb(args.zip2)
+    body += ["", "### 下载（两个包，按需选一个）", "",
+             "- `%s.zip`%s：**精简版**（推荐）——解压即用。不含预览数据，"
+             "首次点开「地图实体预览」自动下载约 14.7MB，地形点开哪张下哪张"
+             % (args.ver, "（%s）" % zp if zp else ""),
+             "- `%s-full.zip`%s：**全量版**——预览页与全部 858 张地形已内置，"
+             "断网也能看 3D，代价是体积大得多"
+             % (args.ver, "（%s）" % zf if zf else ""),
+             "", "> 首次使用推荐精简版；想完全离线再下全量版；已在旧版的用户可在"
+             "软件内「设置 → 关于 → 检查更新」直接升级，不必手动下载。"]
     body = "\n".join(body)
 
     if args.dry_run:
