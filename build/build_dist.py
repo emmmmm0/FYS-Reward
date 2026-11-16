@@ -51,9 +51,9 @@ PREVIEW_SRC = os.path.join(BASE, "地图实体预览-3D视图.html")
 PREVIEW_NAME = "preview3d.html"
 TERR_DIR = os.path.join(BASE, "fys-reward", "terr")       # 地形原始 gz 分包（terr/<工坊ID>.bin）
 COVER_DIR = os.path.join(APP, "cover")                    # 地图封面（cover/<地图名>.jpg）
-FULL_TERR = False        # 2026-11-15 起**地形不进包**：安装包只带预览壳，地形按需从
-                         # 静态托管（GitHub）单文件下载（中位 0.4MB）并落盘缓存。
-                         # 需要离线整包时用 --full-terr（会 +284MB）。
+FULL_TERR = False        # 2026-11-15 起**地形不进包**：按需从静态托管（GitHub）单文件
+                         # 下载（中位 0.4MB）并落盘缓存；离线整包用 --full-terr（+284MB）。
+FULL_ZIP = False         # 2026-11-16：发版并发「全量版」zip（main 里按 --full-zip 置位）
 FULL_PV = False          # 2026-11-16 起预览壳**不随包**（用户要求给安装包瘦身）：
                          # 壳托管在 GitHub 主仓库 pv/ 目录，首次点开「实体预览」时
                          # 自动多源下载（约 14.7MB）落盘缓存，之后离线也能看；
@@ -114,7 +114,8 @@ DEFAULT_README = """云朵小铺 · FYS 通关奖励看板
 · 无需安装 Python，地图数据已内置（不联网也能看数值）
 · 3D 实体预览页按需下载（首次点开「实体预览」时自动拉取 preview3d.html 约 14.7MB
   缓存到 exe 旁），**地形按需下载**：第一次点开某张图时
-  才拉这张图的地形分包（中位 0.4MB）并缓存到 terr\\，之后离线也能看；没网时提示下载失败
+  才拉这张图的地形分包（中位 0.4MB）并缓存到 terr\\\\，之后离线也能看；没网时提示下载失败
+· 离线可以用「全量版」压缩包：预览页与全部地形都内置，解压即用、全程不需要联网
 · 服务器状态由本机直接查询游戏服务器得到（不经中转）
 · 只有「同步官方数据」与「一键更新检查」需要联网（前者连 GitHub）
 · 界面用系统自带的 WebView2（Win11 自带；Win10 若提示缺失，装个 Edge 就好）
@@ -647,21 +648,37 @@ def package():
     for f in files:
         fp = os.path.join(PKG_DIR, f)
         log("    %-18s %10d  %s" % (f, os.path.getsize(fp), ts(fp)))
-    return zip_pkg()          # 组装完直接压缩
+    zip_pkg()          # 精简版（默认随包内容）
+    if FULL_ZIP:
+        zip_pkg(full=True)   # 全量版：+terr 全部地形 +preview3d.html 预览壳
+    return ZIP_PATH
 
-def zip_pkg():
-    """只把 PKG_DIR 重新压成发行 zip（_mk_version.py 写完 version.json 后复用）。"""
+def zip_pkg(full=False):
+    """把 PKG_DIR 压成发行 zip（_mk_version.py 写完 version.json 后复用）。
+
+    full=True（2026-11-16 新增）：产出「全量版」zip —— 精简版内容 + terr\\ 全部
+    地形分包 + preview3d.html 预览壳，玩家离线也能看 3D 预览；文件名带 -全量版。
+    发版默认两份 zip 同时出（用户要求：一份全量地图包+预览壳，一份原来的）。
+    """
     global ZIP_PATH
-    if os.path.exists(ZIP_PATH):
+    zpath = ZIP_PATH
+    if full:
+        zpath = os.path.join(BASE, PKG_NAME + "-全量版.zip")
+    if os.path.exists(zpath):
         try:
-            os.remove(ZIP_PATH)
+            os.remove(zpath)
         except OSError as e:                # noqa: BLE001
             # 沙箱/占用都可能拦删除；删不掉就换个名写，别让整轮打包死在这
-            alt = ZIP_PATH + ".%d" % int(time.time())
+            alt = zpath + ".%d" % int(time.time())
             log("  ! 旧 zip 删不掉（%s）→ 改写到 %s" % (e, os.path.basename(alt)))
-            ZIP_PATH = alt
+            if full:
+                zpath = alt
+            else:
+                ZIP_PATH = alt
+                zpath = alt
     skipped = 0
-    with zipfile.ZipFile(ZIP_PATH, "w", zipfile.ZIP_DEFLATED, compresslevel=9) as z:
+    pv_added = 0
+    with zipfile.ZipFile(zpath, "w", zipfile.ZIP_DEFLATED, compresslevel=9) as z:
         for root, dirs, fs in os.walk(PKG_DIR):
             if os.path.abspath(root) == os.path.abspath(PKG_DIR):
                 # 只在**顶层**排除使用者本机跑出来的 data\（onedir 的 _internal\data
@@ -676,7 +693,7 @@ def zip_pkg():
                     skipped += 1
                     continue
                 # 前缀匹配：把下载半成品 preview3d.html.part 也算进「预览壳」一并排除
-                if not FULL_PV and f.lower().startswith(PREVIEW_NAME.lower()):
+                if not full and not FULL_PV and f.lower().startswith(PREVIEW_NAME.lower()):
                     skipped += 1
                     continue
                 # 旧产物样板图（2026-11-16 起不随包）：万一移出失败也绝不进 zip
@@ -685,10 +702,25 @@ def zip_pkg():
                     continue
                 fp = os.path.join(root, f)
                 z.write(fp, os.path.join(PKG_NAME, os.path.relpath(fp, PKG_DIR)))
+        if full:
+            # 全量版补充件：预览壳（源文件，绕过 FULL_PV 排除）+ 全部地形分包
+            pv = PREVIEW_SRC if os.path.exists(PREVIEW_SRC) else \
+                os.path.join(APP, PREVIEW_NAME)
+            if os.path.exists(pv):
+                z.write(pv, os.path.join(PKG_NAME, PREVIEW_NAME))
+                pv_added += 1
+            if os.path.isdir(TERR_DIR):
+                for fn in sorted(os.listdir(TERR_DIR)):
+                    if not fn.endswith(".bin"):
+                        continue
+                    z.write(os.path.join(TERR_DIR, fn),
+                            os.path.join(PKG_NAME, "terr", fn))
+                    pv_added += 1
+            log("  全量版补充：预览壳 + 地形 %d 个文件" % pv_added)
     if skipped:
-        log("  （已排除 %d 个运行期日志）" % skipped)
-    log("  压缩包：%s（%s）" % (ZIP_PATH, human(os.path.getsize(ZIP_PATH))))
-    return ZIP_PATH
+        log("  （已排除 %d 个运行期日志/遗留物）" % skipped)
+    log("  压缩包：%s（%s）" % (zpath, human(os.path.getsize(zpath))))
+    return zpath
 
 
 def main():
@@ -701,13 +733,17 @@ def main():
                     help="把地形分包打进发行包（+约 284MB；默认不打，改为运行时按需下载）")
     ap.add_argument("--no-full-terr", dest="full_terr", action="store_false",
                     help="（旧参数，等同默认：地形不进包）")
-    ap.add_argument("--no-full-pv", dest="full_pv", action="store_false",
-                    help="不把实体预览壳打进发行包（2026-10-23 起默认随包）")
+    ap.add_argument("--no-full-pv", dest="full_pv", action="store_false", default=False,
+                    help="（保留兼容，默认本就不随包：预览壳走云端按需下载）")
+    ap.add_argument("--full-zip", dest="full_zip", action="store_true",
+                    help="额外产出「全量版」zip（精简版 + terr 全部地形 + 预览壳，+约 300MB；"
+                         "2026-11-16 起发版两份 zip 并发）")
     args = ap.parse_args()
 
-    global FULL_TERR, FULL_PV
+    global FULL_TERR, FULL_PV, FULL_ZIP
     FULL_TERR = bool(args.full_terr)
     FULL_PV = bool(args.full_pv)
+    FULL_ZIP = bool(args.full_zip)
 
     log("=" * 58)
     log("云朵小铺 · FYS 通关奖励看板 —— 一键打包分发")
