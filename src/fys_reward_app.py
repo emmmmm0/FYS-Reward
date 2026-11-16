@@ -146,6 +146,10 @@ CHANGELOG = [
                 "的地形分包，857 张图的地形全部恢复",
                 "补记：上一包（v2.15）打包时预览壳源文件没同步，「3D 视图拖拽旋转方向",
                 "反了」的修复实际没随包——本包起壳源纳入校验，旋转修复也真正生效",
+                "**首次下载预览数据时进度条一直不出现**：首选镜像偶发挂起时原来要",
+                "干等 3 分钟才换下一个源，期间只有一条空转条；现在连接阶段就显示",
+                "「正在连接镜像源 …」30 秒自动换源，下到一半卡住的镜像也会被换掉，",
+                "真实下载一开始就切换成带百分比的进度条",
             ]},
         ],
     },
@@ -968,7 +972,16 @@ PV_BASES_DEFAULT = (
 )
 PV_URLS = [u for u in _cloud_env("FYS_PV_URL", PV_BASES_DEFAULT).split(",") if u]
 PV_URL = PV_URLS[0] if PV_URLS else ""     # 兼容旧引用：非空即视为「有云端壳可拉」
-PV_TIMEOUT = 180.0
+# ⚠ 2026-11-16 反馈「进度条一直不出现」：原 PV_TIMEOUT=180s 应用在 urlopen 上，
+# gh-proxy 间歇性挂起时（连接通但不回响应头）第一个源要干等满 180s 才换下一个，
+# 期间 _PV_PROG 一直是 idle，前端遮罩永远停在假进度条。拆成两个口径：
+PV_OPEN_TIMEOUT = 30.0    # 单源「连接+响应头」等待上限；socket 超时同口径（64KB/块，
+                          # 健康连接每块远小于此值，慢流不断）
+PV_DL_BUDGET = 60.0       # 单源下载预算：响应头到了但数据涓流（60s 没下完且没到底）
+                          # → 弃掉换下一个源；只有「还有备用源」时才检查（最后一个源
+                          # 不限时，慢慢下完也行）。14.7MB 壳实测 raw 5s 内完成，
+                          # 健康慢源给 60s 是足够的；涓流大多来自挂掉的镜像代理。
+PV_SRC_BUDGET = 120.0     # 多源换源总预算（只在「开新源前」检查，不切断进行中的下载）
 PV_NEED_MB = 16.3
 
 
@@ -1150,24 +1163,83 @@ def preview_fetch():
         tmp = fp + ".part"
         try:
             import hashlib
-            # 多源逐试（绕开系统代理同 terr_fetch / update_check），否则大文件会卡死
-            with _pv_open("", timeout=PV_TIMEOUT) as r:
+            import urllib.parse
+            import urllib.request
+
+            def _pv_host(u):
+                try:
+                    return urllib.parse.urlsplit(u).netloc or u
+                except Exception:                              # noqa: BLE001
+                    return u
+
+            # 多源逐试（绕开系统代理同 terr_fetch / update_check），否则大文件会卡死。
+            # 每个源开连前都把 phase 置为 connect + 源主机名：前端遮罩能显示
+            # 「正在连接镜像源 …」，而不是对着一条假进度条干等（2026-11-16 反馈）。
+            # ⚠ 镜像会「涓流」：响应头秒回但数据几乎不走（实测 gh-proxy 大文件
+            #   60s 0 字节）。所以下载本身也带预算——涓流超时且还有备用源就弃掉换源。
+            class _PvSlow(Exception):
+                pass
+
+            op = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+
+            def _pv_host(u):
+                try:
+                    return urllib.parse.urlsplit(u).netloc or u
+                except Exception:                              # noqa: BLE001
+                    return u
+
+            def _pull(r, host):
+                """单个源上完成下载，返回 (size, sha, head)。涓流超预算抛 _PvSlow。"""
                 total = int(r.headers.get("Content-Length") or 0)
-                _PV_PROG.update(phase="download", got=0, total=total)
+                _PV_PROG.update(phase="download", got=0, total=total, src=host)
                 head = b""
                 size = 0
-                sha = hashlib.sha256()                 # 边下边算，落盘后写版本标记
+                sha = hashlib.sha256()             # 边下边算，落盘后写版本标记
+                t0 = time.time()
+                # ⚠ 必须用 read1：HTTPResponse.read(n) 会阻塞到收满 n 字节才返回，
+                # 涓流源（1KB/0.5s）要 32s 才凑满 64KB → 进度不动、预算也迟迟不触发。
+                # read1 只返回「当前缓冲区里有的」，进度实时、涓流能被快速识别。
+                read = getattr(r, "read1", None) or r.read
                 with open(tmp, "wb") as fh:
                     while True:
-                        blk = r.read(256 * 1024)
+                        blk = read(64 * 1024)      # 小块：进度更细 + 慢流不触 socket 超时
                         if not blk:
                             break
-                        if not head:                       # 留住开头做 HTML 错误页判别
+                        if not head:               # 留住开头做 HTML 错误页判别
                             head = blk[:4096]
                         fh.write(blk)
                         sha.update(blk)
                         size += len(blk)
                         _PV_PROG["got"] = size
+                        if (more and time.time() - t0 > PV_DL_BUDGET
+                                and (total <= 0 or size < total)):
+                            raise _PvSlow()        # 涓流：放弃本源，换下一个（最后一个源不限时）
+                return size, sha, head
+
+            size = 0
+            sha = None
+            head = b""
+            last = None
+            deadline = time.time() + PV_SRC_BUDGET
+            for i, base in enumerate(PV_URLS):
+                more = i + 1 < len(PV_URLS)
+                if i and time.time() > deadline:   # 至少试一个源；预算只在换源前检查
+                    break
+                host = _pv_host(base)
+                _PV_PROG.update(phase="connect", src=host, got=0, total=0)
+                try:
+                    req = urllib.request.Request(base, method="GET")
+                    with op.open(req, timeout=PV_OPEN_TIMEOUT) as r:
+                        size, sha, head = _pull(r, host)
+                    break
+                except _PvSlow:
+                    log("[预览] 源 %s 下载过慢（>%ds），换下一个源" % (host, PV_DL_BUDGET))
+                    continue
+                except Exception as e:                             # noqa: BLE001
+                    last = e
+                    continue
+            if sha is None:
+                raise last or RuntimeError("无预览壳云端源")
             # 兜底校验：防网关塞回一个 HTML 错误页被当成成功
             if size < 1024 * 1024 or b"<html" not in head.lower():
                 _PV_PROG["phase"] = "error"
