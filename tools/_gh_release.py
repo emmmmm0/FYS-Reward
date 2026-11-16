@@ -80,10 +80,11 @@ def main():
     meta = json.load(open(args.manifest, encoding="utf-8"))
     items = bullets(meta.get("notes") or [])
     body = ["## 云朵小铺 · FYS 通关奖励看板 %s" % args.ver, ""]
+    if meta.get("intro"):
+        body += [meta["intro"], ""]
     body += ["- " + it for it in items]
     body += ["", "### 下载", "",
              "- `云朵小铺-FYS通关奖励看板.zip`：完整包（解压即用，免安装）",
-             "- `%s`：单文件 exe，供软件内「设置 → 关于 → 检查更新」替换使用" % meta.get("file", ""),
              "", "> 首次使用请下 zip；已在旧版的用户可在软件内直接检查更新。"]
     body = "\n".join(body)
 
