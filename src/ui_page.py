@@ -618,6 +618,15 @@ rgba(240,168,104,.3),#f0a868,#f0a868,rgba(240,168,104,.3));background-size:200% 
         <div id="built">—</div>
       </div>
 
+      <!-- 软件更新卡：随时手动检查是否最新版，发现新版就地一键更新（进度也在这里） -->
+      <div class="card" id="setUpdCard" style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+        <span style="font-size:var(--fs-md);font-weight:700">🚀 软件更新</span>
+        <span id="setUpdVer" style="color:var(--muted,#999);font-size:var(--fs-sm)">当前版本 —</span>
+        <span id="setUpdStat" style="color:var(--muted,#999);font-size:var(--fs-sm)"></span>
+        <span style="flex:1"></span>
+        <button class="btn" id="setUpdBtn" style="min-width:0">🔄 检查更新</button>
+      </div>
+
       <!-- 作者名片（云朵名片）：QQ 与寄语，复制按钮见 script 里的 bindAuthor() -->
       <div class="au1">
         <span class="seal">云朵出品</span>
