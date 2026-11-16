@@ -150,6 +150,14 @@ CHANGELOG = [
                 "干等 3 分钟才换下一个源，期间只有一条空转条；现在连接阶段就显示",
                 "「正在连接镜像源 …」30 秒自动换源，下到一半卡住的镜像也会被换掉，",
                 "真实下载一开始就切换成带百分比的进度条",
+                "**开不开 VPN 都下不来预览数据（最严重的一条）**：四个下载源的地址",
+                "只写到仓库目录 `.../pv`，程序实际请求的是目录地址，四个源全部 404，",
+                "所以从来就没成功过；现在地址指到文件本体，实测 11 秒下完并缓存",
+                "**开着 VPN 也不起作用**：程序为绕开系统代理一律强制直连，等于替你",
+                "把梯子关掉，被墙的源当然拿不到；现在检测到系统代理就先走代理、再",
+                "退回直连，VPN 开着时直连源也能正常下载",
+                "**下载提示的体积与实际文件对不上**：提示原来写死 16.3MB，而仓库里",
+                "的预览数据实为 14.7MB；现在按云端实测体积显示，不再写死",
             ]},
         ],
     },
@@ -947,7 +955,7 @@ def root_etag():
 
 
 # ── 预览壳云端按需分发（v2.0 起）────────────────────────────────────
-# preview3d.html 约 16.3MB，是 667 张僵尸逃跑图的实体数据。不再随发行包分发：
+# preview3d.html 约 14.7MB，是 667 张僵尸逃跑图的实体数据。不再随发行包分发：
 # 首次打开预览时由本服务从云端取一份落到 exe 旁，之后就是本地读取（秒开），
 # 断网也能看。要发离线完整包，打包时加 --full-pv 即可。
 def _cloud_env(key, default=""):
@@ -964,11 +972,15 @@ def _cloud_env(key, default=""):
 # 预览壳云端源（2026-11-16 恢复云端按需分发，托管在 GitHub 主仓库 pv/ 目录）。
 # 多源逐试（与 update_bases / terr_cdn_bases 同一套路），gh-proxy 实测最快放首位；
 # FYS_PV_URL 环境变量可整体覆盖（逗号分隔多个源）。
+# ⚠ 2026-11-16 最严重的一处：源里只写到目录 `.../pv`，而代码是 `base + suffix`
+# （suffix 为 "" / ".ver"），于是**实际请求的是目录地址**，四个源全部 404 ——
+# 不论开不开 VPN 都「下不下来」，且失败被归为 miss（各源确认未收录）。源必须
+# 指到文件本体，`.ver` 才是 `preview3d.html.ver`。
 PV_BASES_DEFAULT = (
-    "https://gh-proxy.com/https://raw.githubusercontent.com/emmmmm0/FYS-Reward/main/pv,"
-    "https://raw.githubusercontent.com/emmmmm0/FYS-Reward/main/pv,"
-    "https://cdn.jsdelivr.net/gh/emmmmm0/FYS-Reward@main/pv,"
-    "https://ghproxy.net/https://raw.githubusercontent.com/emmmmm0/FYS-Reward/main/pv"
+    "https://gh-proxy.com/https://raw.githubusercontent.com/emmmmm0/FYS-Reward/main/pv/preview3d.html,"
+    "https://raw.githubusercontent.com/emmmmm0/FYS-Reward/main/pv/preview3d.html,"
+    "https://cdn.jsdelivr.net/gh/emmmmm0/FYS-Reward@main/pv/preview3d.html,"
+    "https://ghproxy.net/https://raw.githubusercontent.com/emmmmm0/FYS-Reward/main/pv/preview3d.html"
 )
 PV_URLS = [u for u in _cloud_env("FYS_PV_URL", PV_BASES_DEFAULT).split(",") if u]
 PV_URL = PV_URLS[0] if PV_URLS else ""     # 兼容旧引用：非空即视为「有云端壳可拉」
@@ -982,25 +994,106 @@ PV_DL_BUDGET = 60.0       # 单源下载预算：响应头到了但数据涓流�
                           # 不限时，慢慢下完也行）。14.7MB 壳实测 raw 5s 内完成，
                           # 健康慢源给 60s 是足够的；涓流大多来自挂掉的镜像代理。
 PV_SRC_BUDGET = 120.0     # 多源换源总预算（只在「开新源前」检查，不切断进行中的下载）
-PV_NEED_MB = 16.3
+PV_NEED_MB = 14.7          # 兜底文案值：云端壳实测 15,402,411 B = 14.69 MB
+                           # ⚠ 2026-11-16 反馈「下载注释和实际文件不符」：原来写死
+                           # 16.3MB，与仓库里那份壳差了 1.6MB。现在以实测
+                           # Content-Length 为准（need_mb），这个常量只做出厂兜底。
+_PV_NEED = {"mb": 0.0, "t": 0.0}
+
+
+def pv_total_hint():
+    """壳体积的「免费」来源：更新清单里的 pv_size（update_check 已拉过、走缓存）。
+
+    镜像走 chunked 时下载响应没有 Content-Length，HEAD 又常被打回（实测
+    gh-proxy 的 HEAD 不带长度、ghproxy.net 的 HEAD 直接握手超时）——清单里
+    发布时写进去的真实字节数最靠得住，也让「提示体积」与文件永远一致。"""
+    cache = globals().get("_UPDATE_CACHE") or {}
+    info = cache.get("info") or {}
+    try:
+        n = int(info.get("pv_size") or 0)
+    except Exception:                                          # noqa: BLE001
+        return 0
+    return n if n > 2 * 1024 * 1024 else 0
+
+
+def need_mb(total=None):
+    """壳体积（MB）。total>0 时按实测校准并缓存 5 分钟；否则用缓存 / 清单 / 兜底。"""
+    if total and total > 0:
+        _PV_NEED.update(mb=round(total / 1048576.0, 1), t=time.time())
+        return _PV_NEED["mb"]
+    if _PV_NEED["mb"] and time.time() - _PV_NEED["t"] < 300:
+        return _PV_NEED["mb"]
+    hint = pv_total_hint()
+    if hint:
+        return round(hint / 1048576.0, 1)
+    return PV_NEED_MB
+
+
+def _pv_proxy_alive(px):
+    """系统代理是否真的能连上（TCP 握手 0.4s 内）。
+
+    ⚠ 为什么必须探活：VPN 关掉后注册表里的代理配置常常还留着（ProxyEnable 也
+    常被各类客户端忘了改），直接走它会让每次下载都白等一个连接超时；实测这台
+    机器上「代理配置还在但 7877 没人听」时，预览壳就是这样卡满 60 秒预算的。"""
+    import socket
+    import urllib.parse
+    for key in ("https", "http", "all"):
+        u = px.get(key)
+        if not u:
+            continue
+        try:
+            sp = urllib.parse.urlsplit(u if "://" in u else "http://" + u)
+            host, port = sp.hostname, sp.port or 80
+        except Exception:                                      # noqa: BLE001
+            continue
+        if not host:
+            continue
+        try:
+            with socket.create_connection((host, port), timeout=0.4):
+                return True
+        except OSError:
+            continue
+    return False
+
+
+def _pv_openers():
+    """按优先级返回 (名字, opener) 列表：系统代理（VPN 常驻系统代理）→ 直连。
+
+    ⚠ 2026-11-16 反馈「开 VPN 和关 VPN 都下不下来」的一半原因就在这里：原来
+    一律 `ProxyHandler({})` 强制直连，等于**把玩家开着的梯子关掉**——raw /
+    jsDelivr 在国内直连必被墙，于是 VPN 开着也没用。现在先按系统代理配置判断：
+    代理**真的能连上**就先走代理、再退回直连；没有代理 / 代理已死就纯直连
+    （不多等一次超时）。"""
+    import urllib.request
+    outs = []
+    try:
+        px = urllib.request.getproxies()
+        if (px.get("https") or px.get("http") or px.get("all")) and _pv_proxy_alive(px):
+            outs.append(("proxy", urllib.request.build_opener()))
+    except Exception:                                          # noqa: BLE001
+        pass
+    outs.append(("direct",
+                 urllib.request.build_opener(urllib.request.ProxyHandler({}))))
+    return outs
 
 
 def _pv_open(suffix="", method="GET", timeout=6):
     """按 PV_URLS 逐源请求预览壳相关文件，返回第一个成功的响应对象。
 
-    与 terr_fetch / update_check 同思路：绕开系统代理，源失败（DNS 污染 /
-    限流 403 / 超时）自动换下一个；全部失败抛最后一个异常（保留 code 属性，
-    上层靠它区分 404 / 网络）。"""
+    源失败（DNS 污染 / 限流 403 / 超时 / 404）自动换下一个；每个源都试
+    「系统代理 → 直连」两种走法（见 _pv_openers）。全部失败抛最后一个异常
+    （保留 code 属性，上层靠它区分 404 / 网络）。"""
     import urllib.request
-    op = urllib.request.build_opener(urllib.request.ProxyHandler({}))
     last = None
+    ops = _pv_openers()                 # 探活一次，别在每个源上重复探
     for base in PV_URLS:
-        try:
-            req = urllib.request.Request(base + suffix, method=method)
-            return op.open(req, timeout=timeout)
-        except Exception as e:                                 # noqa: BLE001
-            last = e
-            continue
+        for _kind, op in ops:
+            try:
+                req = urllib.request.Request(base + suffix, method=method)
+                return op.open(req, timeout=timeout)
+            except Exception as e:                             # noqa: BLE001
+                last = e
+                continue
     raise last or RuntimeError("无预览壳云端源")
 # 同图异名（别名 → 壳内实际收录的图名）。
 # 地图库里有少部分图是同一个工坊条目的另一个名字（FYS 改过名 / 老版命名），
@@ -1047,15 +1140,54 @@ _PV_VER = {"t": 0.0, "ver": ""}
 _PV_REF = {"busy": False, "t": 0.0}
 
 
-def _pv_cloud_size():
-    """HEAD 拿云端壳大小（不下载内容）。无云端源时返回 0。"""
+_PV_SIZE = {"t": 0.0, "n": 0}
+
+
+def _pv_cloud_size(max_age=300.0, wait=6.0):
+    """HEAD 拿云端壳大小（不下载内容）。无云端源时返回 0。拿到就顺手校准文案。
+
+    ⚠ 两点讲究：
+    · 结果缓存 5 分钟：镜像走 chunked 时下载响应没有 Content-Length，进度条
+      拿不到分母，需要这个 HEAD 补（见 preview_fetch 里的探测线程）。
+    · **并行探、取第一个有长度答复**：gh-proxy 的 HEAD 是 200 但**不返回
+      Content-Length**（chunked），串行逐源会白等 raw 的 6 秒超时才轮到有长度的
+      ghproxy.net；四个源并发 HEAD，通常 1 秒内就拿到 15,402,411。"""
     if not PV_URLS:
         return 0
+    now = time.time()
+    if _PV_SIZE["n"] > 0 and now - _PV_SIZE["t"] < max_age:
+        return _PV_SIZE["n"]
+    ops = _pv_openers()
+
+    def one(base, op):
+        try:
+            req = urllib.request.Request(base, method="HEAD")
+            with op.open(req, timeout=wait) as r:
+                return int(r.headers.get("Content-Length") or 0)
+        except Exception:                                      # noqa: BLE001
+            return 0
+
     try:
-        with _pv_open("", method="HEAD") as r:
-            return int(r.headers.get("Content-Length") or 0)
+        from concurrent.futures import ThreadPoolExecutor, as_completed
+        # 源 × 走法全并发：代理死掉时不会先把 6 秒耗在代理上，直连也能同时探
+        tasks = [(b, op) for b in PV_URLS for _k, op in ops]
+        pool = ThreadPoolExecutor(max_workers=min(6, len(tasks)))
+        try:
+            futs = [pool.submit(one, b, op) for b, op in tasks]
+            for fu in as_completed(futs, timeout=wait + 1):
+                try:
+                    n = fu.result()
+                except Exception:                              # noqa: BLE001
+                    n = 0
+                if n > 0:
+                    _PV_SIZE.update(t=now, n=n)
+                    need_mb(n)      # 后台线程调用，直接更新「需要下载 N MB」文案
+                    return n
+        finally:
+            pool.shutdown(wait=False, cancel_futures=True)
     except Exception:                                          # noqa: BLE001
-        return 0
+        pass
+    return 0
 
 
 def _pv_cloud_ver(fresh=False):
@@ -1180,18 +1312,22 @@ def preview_fetch():
             class _PvSlow(Exception):
                 pass
 
-            op = urllib.request.build_opener(urllib.request.ProxyHandler({}))
-
             def _pv_host(u):
                 try:
                     return urllib.parse.urlsplit(u).netloc or u
                 except Exception:                              # noqa: BLE001
                     return u
 
-            def _pull(r, host):
+            def _pull(r, host, more):
                 """单个源上完成下载，返回 (size, sha, head)。涓流超预算抛 _PvSlow。"""
                 total = int(r.headers.get("Content-Length") or 0)
+                if total <= 0:
+                    # 镜像 chunked 不给长度：清单里发布时写的真实字节数顶上，
+                    # 前端立刻是百分比而不是「已下载 X MB」的空转条。
+                    total = pv_total_hint()
                 _PV_PROG.update(phase="download", got=0, total=total, src=host)
+                if total > 0:
+                    need_mb(total)                 # 顺手校准「需要下载 N MB」文案
                 head = b""
                 size = 0
                 sha = hashlib.sha256()             # 边下边算，落盘后写版本标记
@@ -1216,13 +1352,16 @@ def preview_fetch():
                             raise _PvSlow()        # 涓流：放弃本源，换下一个（最后一个源不限时）
                 return size, sha, head
 
+            # 候选 = 源 × 走法（系统代理 / 直连）。有代理时先代理后直连：VPN 走
+            # 系统代理的用户，直连 raw 必被墙，反过来先直连只会白等一个超时。
+            cands = [(b, kind, op) for b in PV_URLS for kind, op in _pv_openers()]
             size = 0
             sha = None
             head = b""
             last = None
             deadline = time.time() + PV_SRC_BUDGET
-            for i, base in enumerate(PV_URLS):
-                more = i + 1 < len(PV_URLS)
+            for i, (base, kind, op) in enumerate(cands):
+                more = i + 1 < len(cands)
                 if i and time.time() > deadline:   # 至少试一个源；预算只在换源前检查
                     break
                 host = _pv_host(base)
@@ -1230,10 +1369,10 @@ def preview_fetch():
                 try:
                     req = urllib.request.Request(base, method="GET")
                     with op.open(req, timeout=PV_OPEN_TIMEOUT) as r:
-                        size, sha, head = _pull(r, host)
+                        size, sha, head = _pull(r, host, more)
                     break
                 except _PvSlow:
-                    log("[预览] 源 %s 下载过慢（>%ds），换下一个源" % (host, PV_DL_BUDGET))
+                    log("[预览] %s(%s) 下载过慢（>%ds），换下一个" % (host, kind, PV_DL_BUDGET))
                     continue
                 except Exception as e:                             # noqa: BLE001
                     last = e
@@ -1315,12 +1454,12 @@ def preview_info():
     p = preview_path()
     if not p:
         return {"ok": False, "ready": False, "size": 0, "at": "", "path": "",
-                "need": PV_NEED_MB}
+                "need": need_mb()}
     try:
         st = os.stat(p)
     except OSError:
         return {"ok": False, "ready": False, "size": 0, "at": "", "path": p,
-                "need": PV_NEED_MB}
+                "need": need_mb()}
     # 壳过期（云端已更新）：当作未就绪走重新下载流程，带进度条；断网时 HEAD
     # 失败会视为不过期，旧壳照常用 —— 不会把没网的用户锁在下载页
     stale = _pv_stale(st.st_size) if st.st_size > 1024 * 1024 else False
@@ -1328,7 +1467,7 @@ def preview_info():
             "stale": stale,
             "size": st.st_size,
             "at": time.strftime("%Y-%m-%d %H:%M", time.localtime(st.st_mtime)),
-            "path": p, "need": PV_NEED_MB if stale else 0}
+            "path": p, "need": need_mb() if stale else 0}
 
 
 # ── 预览壳「已收录了哪些图」────────────────────────────────────────────
@@ -2377,12 +2516,14 @@ def terr_fetch(name):
         deadline = t0 + 30.0
         try:
             for base in bases:
-                if time.time() > deadline:
+                left = deadline - time.time()
+                if left <= 1.0:            # 预算只卡「开下一个源」；见下 read 循环的涓流保护
                     break
                 url = base + "/" + urllib.parse.quote(name)
                 try:
                     req = urllib.request.Request(url, headers={"User-Agent": "FYS-Reward"})
-                    with urllib.request.urlopen(req, timeout=12) as r:
+                    # 单源超时不超过剩余预算：否则最后一个源的 12s 会突破 30s 总预算
+                    with urllib.request.urlopen(req, timeout=min(12.0, left)) as r:
                         # 分块流式读：进度实时进 _TERR_PROG（壳内轮询渲染进度条）
                         total = int(r.headers.get("Content-Length") or 0)
                         _TERR_PROG.update(phase="download", got=0, total=total)
@@ -2395,6 +2536,9 @@ def terr_fetch(name):
                             _TERR_PROG["got"] = len(buf)
                             if len(buf) > TERR_MAX_MB * 1048576:
                                 raise ValueError("分包过大（>%dMB）" % TERR_MAX_MB)
+                            # 涓流源（头秒回、数据几乎不走）不能让玩家无限等
+                            if time.time() > deadline:
+                                raise TimeoutError("地形下载超出总预算")
                         data = bytes(buf)
                     if not data:
                         raise ValueError("空响应")
