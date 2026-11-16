@@ -50,18 +50,20 @@ def main():
     ver = top["ver"]
     name = "FYS-Reward-%s.exe" % ver
     # 下载地址（update_apply 逐个试，每个地址 2 次）：
-    #   gh-proxy 走 Release 资产实测最快（6.9MB/3.7s）→ jsDelivr → raw → ghproxy → 原件
-    rel_url = "https://github.com/emmmmm0/FYS-Reward/releases/download/%s/%s" % (ver, name)
+    #   Release 资产只有 zip（2026-11-16 起 exe 不单独发布），exe 更新统一走
+    #   仓库 dist/ 路径：gh-proxy 实测最快（6.9MB/3.7s）→ jsDelivr → raw → ghproxy
+    dist_raw = "https://raw.githubusercontent.com/emmmmm0/FYS-Reward/main/dist/%s" % name
     urls = [
-        "https://gh-proxy.com/" + rel_url,
+        "https://gh-proxy.com/" + dist_raw,
         "https://cdn.jsdelivr.net/gh/emmmmm0/FYS-Reward@main/dist/%s" % name,
-        "https://raw.githubusercontent.com/emmmmm0/FYS-Reward/main/dist/%s" % name,
-        "https://ghproxy.net/" + rel_url,
-        rel_url,
+        dist_raw,
+        "https://ghproxy.net/" + dist_raw,
     ]
     data = {"ver": ver, "date": top.get("date", ""), "size": len(b),
             "file": name, "urls": urls,
-            "sha256": hashlib.sha256(b).hexdigest(), "notes": notes}
+            "sha256": hashlib.sha256(b).hexdigest(),
+            "intro": "%s 更新内容（下面每一条对应一个改动）：" % ver,
+            "notes": notes}
     txt = json.dumps(data, ensure_ascii=False, indent=1)
     outs = [os.path.join(ROOT, "version.json"), os.path.join(PKG_DIR, "version.json")]
     for p in outs:
