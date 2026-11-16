@@ -120,6 +120,10 @@ CHANGELOG = [
                 "「实体预览」时自动多源下载并缓存（之后离线也能看，与地形同一套路）",
                 "在线下载（更新 / 预览壳 / 地形）镜像按实测重排：gh-proxy 最快放首选，",
                 "ghproxy.net 等多源自动兜底，单源限流或挂掉不影响使用",
+                "**上游更新动态不再卡在旧记录**：后台比对失败（网络抖动）后 5 分钟",
+                "即重试（原来要傻等 30 分钟），动态更快跟上官方的最新改动",
+                "**地形下载失败提示更快恢复**：网络级失败只负缓存 2 分钟（原来 10",
+                "分钟内点开都秒失败且看不出原因），重试很快能拿到「首次下载」提示",
             ]},
             {"t": CLG_FIX, "items": [
                 "**GSI 显示「已开启 · 等待游戏推送」却一直收不到数据**：现在会区分三种情况并写清楚——",
@@ -2085,17 +2089,28 @@ def mapnames_loop():
 # 与手动同步的关键区别：① 只比对、不覆盖本地缓存（否则横幅只显示增量）；
 # ② 空 diff 时保留用户还没看过的未读提醒（_write_diff 的 force=False 分支）。
 REPO_CHECK_TTL = 30 * 60.0
+REPO_CHECK_RETRY = 5 * 60.0        # 上次比对失败（网络抖动等）→ 5 分钟就重试，不再傻等
 _REPO_CHECK_STATE = {"at": 0.0, "ok": False, "total": 0}
 
 
+def _repo_check_ttl():
+    """距上次成功比对的冷却时长：成功 30 分钟，失败 5 分钟。"""
+    return REPO_CHECK_TTL if _REPO_CHECK_STATE["ok"] else REPO_CHECK_RETRY
+
+
 def repo_check_tick(force=False):
-    """后台拉一次上游并比对（同进程内最快 30 分钟一次），用于「官方数据有更新」横幅。
+    """后台拉一次上游并比对（同进程内按 _repo_check_ttl 冷却），
+    用于「官方数据有更新」横幅与「📜 上游更新动态」。
+
+    ⚠ 2026-11-16：失败原样等 30 分钟会让动态卡在上一次检出（实测用户
+    「上游更新动态只到 11.9，等了很久才有新记录」——首查赶上网络抖动失败后
+    要等半天才轮到重试）。现在失败 5 分钟即重试。
 
     force 只用于绕过 TTL 冷却（首查 / 测试）；真正下发给 build_index 的永远是
     无覆盖的 auto=True，绝不传 force。
     """
     now = time.time()
-    if not force and now - _REPO_CHECK_STATE["at"] < REPO_CHECK_TTL:
+    if not force and now - _REPO_CHECK_STATE["at"] < _repo_check_ttl():
         return dict(_REPO_CHECK_STATE)
     _REPO_CHECK_STATE["at"] = now
 
@@ -2127,11 +2142,12 @@ def repo_check_tick(force=False):
 
 
 def repo_check_loop():
-    """启动后台上游变更检测循环：起来后 30 秒首查，之后每 30 分钟一次。"""
+    """启动后台上游变更检测循环：起来后 30 秒首查，之后成功每 30 分钟、
+    失败每 5 分钟一次（网络抖动导致的失败不再傻等半轮）。"""
     time.sleep(30)
     repo_check_tick(force=True)
     while True:
-        time.sleep(REPO_CHECK_TTL)
+        time.sleep(_repo_check_ttl())
         repo_check_tick(force=True)
 
 
@@ -2190,8 +2206,11 @@ TERR_CDN_DEFAULT = ("https://gh-proxy.com/https://raw.githubusercontent.com/emmm
                     "https://raw.githubusercontent.com/emmmmm0/fys-terr/main/terr")
 _TERR_LOCKS = {}
 _TERR_GUARD = threading.Lock()
-_TERR_FAIL = {}                    # 文件名 → 失败时间（10 分钟内不重试，免得每次点都等超时）
-TERR_FAIL_TTL = 600.0
+_TERR_FAIL = {}                    # 文件名 → (失败时间, 'miss'|'net')：负缓存按失败性质分档
+TERR_FAIL_TTL_MISS = 600.0         # 各源都确认「未收录」→ 10 分钟不再重试
+TERR_FAIL_TTL_NET = 120.0          # 网络级失败（源挂/超时）→ 只负缓存 2 分钟：
+                                   # 用户很快重试就能拿到真实的「首次下载」提示，
+                                   # 而不是静默 502（2026-11-16 反馈「没有任何下载提示」）
 TERR_MAX_MB = 24                   # 防御：单包超过这个大小直接放弃（正常最大 0.7MB）
 
 
@@ -2251,9 +2270,12 @@ def terr_fetch(name):
     if not bases:
         return None, "nocdn"
     with _TERR_GUARD:
-        fail_at = _TERR_FAIL.get(name)
-        if fail_at and (time.time() - fail_at) < TERR_FAIL_TTL:
-            return None, "miss"
+        fail = _TERR_FAIL.get(name)
+        if fail:
+            fail_at, kind = fail
+            ttl = TERR_FAIL_TTL_MISS if kind == "miss" else TERR_FAIL_TTL_NET
+            if (time.time() - fail_at) < ttl:
+                return None, kind
         lk = _TERR_LOCKS.get(name)
         if lk is None:
             lk = _TERR_LOCKS[name] = threading.Lock()
@@ -2300,10 +2322,11 @@ def terr_fetch(name):
                     last_err = "offline"
                     log("[地形] %s 下载失败：%r" % (name, e))
                     continue
-            _TERR_FAIL[name] = time.time()
+            _TERR_FAIL[name] = (time.time(), last_err)
             if last_err == "miss":
                 log("[地形] 所有托管都没有 %s，10 分钟内不再重试" % name)
                 return None, "miss"
+            log("[地形] %s 暂时下载失败（网络），2 分钟内不再自动重试" % name)
             return None, "offline"
         finally:
             try:
