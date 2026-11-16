@@ -2548,6 +2548,7 @@ function updModal(u){
   ov.innerHTML='<div class="updM" role="dialog" aria-label="发现新版本">'+
     '<div class="updMH">🚀 发现新版本 <b>'+esc(u.ver||'')+'</b>'+
       '<small>当前 '+esc(u.cur||'')+(mb?(' · 约 '+mb):'')+'</small></div>'+
+    (u.intro?'<p class="updMI">'+esc(u.intro)+'</p>':'')+
     '<ul class="updML">'+
       notes.slice(0,3).map(function(n){ return '<li>'+esc(n)+'</li>'; }).join('')+
       (notes.length>3?'<li class="more">…等共 '+notes.length+' 条更新内容</li>':'')+
