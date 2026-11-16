@@ -1963,7 +1963,8 @@ def about_payload():
 # 2026-11-16：更新源改为 GitHub 仓库（原自建服务器已停用）。
 # version.json 放仓库 update/ 目录（小文件，走 jsDelivr/ghproxy/raw 三选一），
 # 安装包 exe 放 GitHub Release 资产（体积大，不走仓库）。三源顺序与地形一致。
-UPDATE_BASE_DEFAULT = ("https://cdn.jsdelivr.net/gh/emmmmm0/FYS-Reward@main/update,"
+UPDATE_BASE_DEFAULT = ("https://gh-proxy.com/https://raw.githubusercontent.com/emmmmm0/FYS-Reward/main/update,"
+                       "https://cdn.jsdelivr.net/gh/emmmmm0/FYS-Reward@main/update,"
                        "https://ghproxy.net/https://raw.githubusercontent.com/emmmmm0/FYS-Reward/main/update,"
                        "https://raw.githubusercontent.com/emmmmm0/FYS-Reward/main/update")
 
@@ -2144,7 +2145,8 @@ def terr_dir(make=False):
 # 置空 = 关闭回源（纯离线行为）。换成 Gitee/自己的服务器只改这一行或那个文本文件。
 # 地形分包托管（多个地址按顺序试：jsDelivr 是 GitHub 的国内可用 CDN，
 # 直连 raw.githubusercontent 在国内经常超时，所以放最后兜底）
-TERR_CDN_DEFAULT = ("https://cdn.jsdelivr.net/gh/emmmmm0/fys-terr@main/terr,"
+TERR_CDN_DEFAULT = ("https://gh-proxy.com/https://raw.githubusercontent.com/emmmmm0/fys-terr/main/terr,"
+                    "https://cdn.jsdelivr.net/gh/emmmmm0/fys-terr@main/terr,"
                     "https://ghproxy.net/https://raw.githubusercontent.com/emmmmm0/fys-terr/main/terr,"
                     "https://raw.githubusercontent.com/emmmmm0/fys-terr/main/terr")
 _TERR_LOCKS = {}
