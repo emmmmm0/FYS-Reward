@@ -64,6 +64,11 @@ def main():
             "sha256": hashlib.sha256(b).hexdigest(),
             "intro": "%s 更新内容（下面每一条对应一个改动）：" % ver,
             "notes": notes}
+    # 预览壳（按需下载）的**真实体积**：客户端「首次使用需要下载预览数据 N MB」
+    # 直接读这里，不再写死常量（2026-11-16 反馈：提示 16.3MB，实际文件 14.7MB）。
+    shell = os.path.join(HERE, "preview3d.html")
+    if os.path.exists(shell):
+        data["pv_size"] = os.path.getsize(shell)
     txt = json.dumps(data, ensure_ascii=False, indent=1)
     outs = [os.path.join(ROOT, "version.json"), os.path.join(PKG_DIR, "version.json")]
     for p in outs:
