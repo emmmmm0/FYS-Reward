@@ -124,6 +124,15 @@ CHANGELOG = [
                 "即重试（原来要傻等 30 分钟），动态更快跟上官方的最新改动",
                 "**地形下载失败提示更快恢复**：网络级失败只负缓存 2 分钟（原来 10",
                 "分钟内点开都秒失败且看不出原因），重试很快能拿到「首次下载」提示",
+                "**下载进度看得见了**：预览数据（14.7MB）下载显示真实百分比与已下 MB，",
+                "地形首次下载在 3D 设置面板「地形」行显示进度条（有没有在下载、",
+                "下到哪、什么时候完一眼可见，原来只有一行文字）",
+                "**预览下载失败可直接重试**：失败提示里就带「🔄 重新加载」按钮",
+                "（原来按钮被遮罩挡住点不到）",
+                "**设置页新增「🚀 软件更新」卡**：作者名片上方随时点「检查更新」，",
+                "当场告诉你是不是最新版；发现新版就地一键更新（进度也在原地）",
+                "**发版改为两份压缩包**：精简版照旧（预览与地形联网自动下载），",
+                "新增「全量版」把预览页与全部地形内置，离线也能看 3D",
             ]},
             {"t": CLG_FIX, "items": [
                 "**GSI 显示「已开启 · 等待游戏推送」却一直收不到数据**：现在会区分三种情况并写清楚——",
@@ -2211,6 +2220,9 @@ TERR_FAIL_TTL_MISS = 600.0         # 各源都确认「未收录」→ 10 分钟
 TERR_FAIL_TTL_NET = 120.0          # 网络级失败（源挂/超时）→ 只负缓存 2 分钟：
                                    # 用户很快重试就能拿到真实的「首次下载」提示，
                                    # 而不是静默 502（2026-11-16 反馈「没有任何下载提示」）
+# 地形下载实时进度（/api/terr/info 轮询用）：壳内首次下载时给玩家一个进度条，
+# 「有没有在下载、下到哪了、什么时候完」一目了然（2026-11-16 反馈）。
+_TERR_PROG = {"name": "", "phase": "idle", "got": 0, "total": 0}
 TERR_MAX_MB = 24                   # 防御：单包超过这个大小直接放弃（正常最大 0.7MB）
 
 
@@ -2286,6 +2298,7 @@ def terr_fetch(name):
         tmp = fp + ".part"
         t0 = time.time()
         last_err = "offline"
+        _TERR_PROG.update(name=name, phase="connect", got=0, total=0)
         # 总预算 30s（2026-11-16）：原来每源 25s、4 源串行最坏 100s 才答复，
         # 镜像半残的晚上玩家点一张缺地形的图要干等一分半。预算只在「换源」时
         # 检查，不会切断正在进行中的下载；超预算按网络失败答复（可重试）。
@@ -2298,14 +2311,25 @@ def terr_fetch(name):
                 try:
                     req = urllib.request.Request(url, headers={"User-Agent": "FYS-Reward"})
                     with urllib.request.urlopen(req, timeout=12) as r:
-                        data = r.read(TERR_MAX_MB * 1048576 + 1)
+                        # 分块流式读：进度实时进 _TERR_PROG（壳内轮询渲染进度条）
+                        total = int(r.headers.get("Content-Length") or 0)
+                        _TERR_PROG.update(phase="download", got=0, total=total)
+                        buf = bytearray()
+                        while True:
+                            blk = r.read(64 * 1024)
+                            if not blk:
+                                break
+                            buf.extend(blk)
+                            _TERR_PROG["got"] = len(buf)
+                            if len(buf) > TERR_MAX_MB * 1048576:
+                                raise ValueError("分包过大（>%dMB）" % TERR_MAX_MB)
+                        data = bytes(buf)
                     if not data:
                         raise ValueError("空响应")
-                    if len(data) > TERR_MAX_MB * 1048576:
-                        raise ValueError("分包过大（>%dMB）" % TERR_MAX_MB)
                     with open(tmp, "wb") as fh:
                         fh.write(data)
                     os.replace(tmp, fp)
+                    _TERR_PROG.update(phase="done", got=len(data), total=len(data))
                     _TERR_STAT_CACHE["t"] = 0.0
                     log("[地形] 已下载 %s（%.0f KB，%.1f 秒，来源 %s）"
                         % (name, len(data) / 1024.0, time.time() - t0,
@@ -2323,6 +2347,7 @@ def terr_fetch(name):
                     log("[地形] %s 下载失败：%r" % (name, e))
                     continue
             _TERR_FAIL[name] = (time.time(), last_err)
+            _TERR_PROG["phase"] = "error"
             if last_err == "miss":
                 log("[地形] 所有托管都没有 %s，10 分钟内不再重试" % name)
                 return None, "miss"
@@ -4950,6 +4975,10 @@ def _api_terr_info(q):
         out["wf"] = wf
         out["cached"] = os.path.exists(
             os.path.join(terr_dir() or BASE_DIR, wf + ".bin"))
+        # 首次下载进行中时附带实时进度（壳内渲染进度条用）
+        p = _TERR_PROG
+        if p["name"] == wf and p["phase"] in ("connect", "download"):
+            out["prog"] = {"phase": p["phase"], "got": p["got"], "total": p["total"]}
     return out
 
 
