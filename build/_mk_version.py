@@ -47,7 +47,19 @@ def main():
     for g in top.get("groups") or []:
         notes.extend(g.get("items") or [])
     b = open(EXE, "rb").read()
-    data = {"ver": top["ver"], "size": len(b),
+    ver = top["ver"]
+    name = "FYS-Reward-%s.exe" % ver
+    # 下载地址（update_apply 逐个试，每个地址 2 次）：
+    #   raw 直连最快 → ghproxy 转 Release 资产（国内常用镜像）→ jsDelivr → Release 原件
+    rel_url = "https://github.com/emmmmm0/FYS-Reward/releases/download/%s/%s" % (ver, name)
+    urls = [
+        "https://raw.githubusercontent.com/emmmmm0/FYS-Reward/main/dist/%s" % name,
+        "https://ghproxy.net/" + rel_url,
+        "https://cdn.jsdelivr.net/gh/emmmmm0/FYS-Reward@main/dist/%s" % name,
+        rel_url,
+    ]
+    data = {"ver": ver, "date": top.get("date", ""), "size": len(b),
+            "file": name, "urls": urls,
             "sha256": hashlib.sha256(b).hexdigest(), "notes": notes}
     txt = json.dumps(data, ensure_ascii=False, indent=1)
     outs = [os.path.join(ROOT, "version.json"), os.path.join(PKG_DIR, "version.json")]
