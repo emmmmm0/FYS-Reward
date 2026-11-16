@@ -615,13 +615,18 @@ def package():
     else:
         io.open(rd, "w", encoding="utf-8").write(DEFAULT_README)
         log("  已写入默认 使用说明.txt")
-    stage_preview(PKG_DIR)      # 实体预览独立文件（exe 旁 preview3d.html）
-    # 覆盖增强（直播向）样板图：v2.2 起随包分发，双击即可预览四种覆盖布局
-    sample = os.path.join(BASE, "样板图-覆盖增强-直播向.html")
-    if os.path.exists(sample):
-        copy_with_retry(sample, os.path.join(PKG_DIR, "样板图-覆盖增强-直播向.html"))
-    else:
-        log("  ! 找不到样板图-覆盖增强-直播向.html，本次包里没有它")
+    stage_preview(PKG_DIR)      # 实体预览独立文件（exe 旁 preview3d.html，默认不随包）
+    # 「样板图-覆盖增强-直播向.html」2026-11-16 起不再随包（用户指示：与软件功能
+    # 无关的旧产物没必要占安装包体积）。包目录里如有旧副本，移出以免误进 zip。
+    stale_s = os.path.join(PKG_DIR, "样板图-覆盖增强-直播向.html")
+    if os.path.isfile(stale_s):
+        alt = os.path.join(BASE, "_sample_stale_%d.html" % int(time.time()))
+        try:
+            os.rename(stale_s, alt)
+            log("  旧产物 样板图.html 已移出包目录 → %s（不再随包分发）"
+                % os.path.basename(alt))
+        except OSError as e:                                   # noqa: BLE001
+            log("  ! 移出旧样板图失败（zip 会按排除清单跳过）：%r" % (e,))
     if not FULL_TERR:           # 把上一版遗留的地形目录移出包目录，免得误进 zip
         stale_t = os.path.join(PKG_DIR, "terr")
         if os.path.isdir(stale_t):
@@ -672,6 +677,10 @@ def zip_pkg():
                     continue
                 # 前缀匹配：把下载半成品 preview3d.html.part 也算进「预览壳」一并排除
                 if not FULL_PV and f.lower().startswith(PREVIEW_NAME.lower()):
+                    skipped += 1
+                    continue
+                # 旧产物样板图（2026-11-16 起不随包）：万一移出失败也绝不进 zip
+                if f.lower().startswith("样板图"):
                     skipped += 1
                     continue
                 fp = os.path.join(root, f)
