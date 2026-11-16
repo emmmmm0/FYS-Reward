@@ -95,16 +95,47 @@ def main():
         print(body)
         return 0
 
-    code, rel = req("POST", "%s/repos/%s/releases" % (API, args.repo), token, {
-        "tag_name": args.ver, "target_commitish": "main",
-        "name": "%s · %s" % (args.ver, "云朵小铺 FYS 通关奖励看板"),
-        "body": body, "draft": bool(args.draft), "prerelease": False,
-    }, timeout=90)
-    if code not in (200, 201):
-        print("建 Release 失败:", code, rel)
-        return 1
+    # 重发同版本是常态（v2.16 一天内多次替换资产）：tag/Release 已存在时复用，
+    # 先 PATCH 正文，再删同名资产重传——否则 POST 会 422 already_exists。
+    rel = None
+    code, cur = req("GET", "%s/repos/%s/releases/tags/%s" % (API, args.repo, args.ver),
+                    token, timeout=60)
+    if code == 200 and cur:
+        rid = cur["id"]
+        c2, rel = req("PATCH", "%s/repos/%s/releases/%d" % (API, args.repo, rid), token, {
+            "name": "%s · %s" % (args.ver, "云朵小铺 FYS 通关奖励看板"),
+            "body": body, "draft": bool(args.draft), "prerelease": False,
+        }, timeout=90)
+        if c2 not in (200, 201):
+            print("更新 Release 失败:", c2, rel)
+            return 1
+        print("Release 已存在 → 正文已更新:", rel["html_url"])
+    else:
+        code, rel = req("POST", "%s/repos/%s/releases" % (API, args.repo), token, {
+            "tag_name": args.ver, "target_commitish": "main",
+            "name": "%s · %s" % (args.ver, "云朵小铺 FYS 通关奖励看板"),
+            "body": body, "draft": bool(args.draft), "prerelease": False,
+        }, timeout=90)
+        if code not in (200, 201):
+            print("建 Release 失败:", code, rel)
+            return 1
+        print("Release 已建:", rel["html_url"])
     rid, up = rel["id"], rel["upload_url"].split("{")[0]
-    print("Release 已建:", rel["html_url"])
+
+    def asset_name(p):
+        name = os.path.basename(p)
+        if name.lower().endswith(".zip"):
+            name = ("%s-full.zip" % args.ver) if "-全量版" in name else ("%s.zip" % args.ver)
+        return name
+
+    want = {asset_name(p) for p in (args.zip, args.zip2, args.exe) if p}
+    c3, assets = req("GET", "%s/repos/%s/releases/%d/assets" % (API, args.repo, rid),
+                     token, timeout=60)
+    for a in (assets or []):
+        if a.get("name") in want:              # 同名先删，否则上传 422 already_exists
+            c4, _ = req("DELETE", "%s/repos/%s/releases/assets/%d"
+                        % (API, args.repo, a["id"]), token, timeout=60)
+            print("  旧资产 %s 已删（%s）" % (a["name"], c4))
 
     for p in (args.zip, args.zip2, args.exe):
         if not p:
@@ -112,12 +143,7 @@ def main():
         if not os.path.exists(p):
             print("  ! 找不到", p)
             continue
-        name = os.path.basename(p)
-        if name.lower().endswith(".zip"):
-            if "-全量版" in name:
-                name = "%s-full.zip" % args.ver      # 全量版资产名（ASCII）
-            else:
-                name = "%s.zip" % args.ver           # ASCII 名，下载链接更稳
+        name = asset_name(p)
         blob = open(p, "rb").read()
         u = "%s?name=%s" % (up, urllib.parse.quote(name))
         print("  上传 %s（%.1f MB）…" % (name, len(blob) / 1048576.0))
