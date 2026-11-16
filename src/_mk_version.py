@@ -47,8 +47,28 @@ def main():
     for g in top.get("groups") or []:
         notes.extend(g.get("items") or [])
     b = open(EXE, "rb").read()
-    data = {"ver": top["ver"], "size": len(b),
-            "sha256": hashlib.sha256(b).hexdigest(), "notes": notes}
+    ver = top["ver"]
+    name = "FYS-Reward-%s.exe" % ver
+    # 下载地址（update_apply 逐个试，每个地址 2 次）：
+    #   Release 资产只有 zip（2026-11-16 起 exe 不单独发布），exe 更新统一走
+    #   仓库 dist/ 路径：gh-proxy 实测最快（6.9MB/3.7s）→ jsDelivr → raw → ghproxy
+    dist_raw = "https://raw.githubusercontent.com/emmmmm0/FYS-Reward/main/dist/%s" % name
+    urls = [
+        "https://gh-proxy.com/" + dist_raw,
+        "https://cdn.jsdelivr.net/gh/emmmmm0/FYS-Reward@main/dist/%s" % name,
+        dist_raw,
+        "https://ghproxy.net/" + dist_raw,
+    ]
+    data = {"ver": ver, "date": top.get("date", ""), "size": len(b),
+            "file": name, "urls": urls,
+            "sha256": hashlib.sha256(b).hexdigest(),
+            "intro": "%s 更新内容（下面每一条对应一个改动）：" % ver,
+            "notes": notes}
+    # 预览壳（按需下载）的**真实体积**：客户端「首次使用需要下载预览数据 N MB」
+    # 直接读这里，不再写死常量（2026-11-16 反馈：提示 16.3MB，实际文件 14.7MB）。
+    shell = os.path.join(HERE, "preview3d.html")
+    if os.path.exists(shell):
+        data["pv_size"] = os.path.getsize(shell)
     txt = json.dumps(data, ensure_ascii=False, indent=1)
     outs = [os.path.join(ROOT, "version.json"), os.path.join(PKG_DIR, "version.json")]
     for p in outs:
