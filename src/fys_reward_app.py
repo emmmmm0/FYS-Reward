@@ -111,6 +111,11 @@ CHANGELOG = [
                 "**服务器清单跟随运维换 IP**：兜底清单从写死 IP 改成按域名解析（sN.cs2ze.com），",
                 "解析结果缓存 5 分钟，运维换 IP 后自动跟上；官网清单可用时只以官网为准，",
                 "已下线的服（如 09#）不再一直挂在列表里显示成「探不到」",
+                "**软件在线更新改走 GitHub 仓库**：旧下载服务器已停用，检查更新改读仓库里的",
+                "更新清单，下载源 jsDelivr → 镜像 → 直连三选一，exe 下完仍做 sha256 强校验，",
+                "不通过一律不替换（地形分包同样托管在 GitHub，按需下载）",
+                "**屏幕覆盖小窗字号可调到 8**：滑杆下限从 16 改为 8、一步 1 档；小字号下标签与",
+                "数值同步缩放，卡片 / 单行 / 图标 / 皮肤四种布局都不裁切",
             ]},
             {"t": CLG_FIX, "items": [
                 "**GSI 显示「已开启 · 等待游戏推送」却一直收不到数据**：现在会区分三种情况并写清楚——",
@@ -1800,7 +1805,17 @@ def save_uiprefs(d):
             tmp = "%s.%d.tmp" % (_uiprefs_path(), threading.get_ident())
             with open(tmp, "w", encoding="utf-8") as fh:
                 json.dump(d, fh, ensure_ascii=False, indent=2)
-            os.replace(tmp, _uiprefs_path())
+            # ⚠ Windows 上 os.replace 偶发 PermissionError：杀软/索引器/另一个线程
+            # 正拿着目标文件句柄时替换会被拒（实测并发写偏好会整条丢掉）。
+            # 这里短重试几次，别让一次占用把用户刚改的偏好吞掉。
+            for i in range(6):
+                try:
+                    os.replace(tmp, _uiprefs_path())
+                    break
+                except PermissionError:
+                    if i == 5:
+                        raise
+                    time.sleep(0.05 * (i + 1))
     except OSError as e:
         log("[界面偏好] 保存失败：%r" % e)
 
@@ -1940,10 +1955,11 @@ def about_payload():
 
 
 # ── 一键更新（v1.5 起）───────────────────────────────────────────────────
-# 原本走腾讯云轻量 124.223.107.6 的 Caddy 静态目录 /update/（version.json + exe）。
-# v2.14 起用户不再维护服务器 → UPDATE_BASE 默认为空 = **离线版**：不检查在线更新，
-# 新版由分发 zip 手动覆盖。若将来改用 GitHub Pages / Gitee 之类静态托管，
-# 设环境变量 FYS_UPDATE_BASE=<目录 URL> 即可恢复在线更新，无需改代码。
+# 历史：v1.5 走腾讯云轻量 124.223.107.6 的静态目录 /update/；v2.14 服务器停用变离线版。
+# 2026-11-16 恢复在线更新，改由 GitHub 仓库承载：
+#   · 清单 update/version.json（仓库里，小文件走 CDN）
+#   · 安装包 dist/FYS-Reward-vX.Y.Z.exe（单文件 <20MB，jsDelivr 能直出）
+# 想临时换源（自建/Gitee）设 FYS_UPDATE_BASE=<目录 URL>，逗号分隔可给多个。
 # 2026-11-16：更新源改为 GitHub 仓库（原自建服务器已停用）。
 # version.json 放仓库 update/ 目录（小文件，走 jsDelivr/ghproxy/raw 三选一），
 # 安装包 exe 放 GitHub Release 资产（体积大，不走仓库）。三源顺序与地形一致。
