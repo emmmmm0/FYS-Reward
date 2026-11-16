@@ -1,0 +1,16 @@
+{
+ "ver": "v2.16",
+ "date": "2026-11-10",
+ "notes": [
+  "首个托管在 GitHub 的版本（更新通道基线）",
+  "此后新版本会通过「检查更新」下载替换 exe"
+ ],
+ "file": "FYS-Reward-v2.16.exe",
+ "urls": [
+  "https://cdn.jsdelivr.net/gh/emmmmm0/FYS-Reward@main/dist/FYS-Reward-v2.16.exe",
+  "https://ghproxy.net/https://raw.githubusercontent.com/emmmmm0/FYS-Reward/main/dist/FYS-Reward-v2.16.exe",
+  "https://raw.githubusercontent.com/emmmmm0/FYS-Reward/main/dist/FYS-Reward-v2.16.exe"
+ ],
+ "sha256": "e2f3df1a63bdebe6f85c4e7da5bdcab4be4b0a160f034a036720281f7103bc2c",
+ "size": 6850227
+}
