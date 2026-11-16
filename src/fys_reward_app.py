@@ -116,6 +116,10 @@ CHANGELOG = [
                 "不通过一律不替换（地形分包同样托管在 GitHub，按需下载）",
                 "**屏幕覆盖小窗字号可调到 8**：滑杆下限从 16 改为 8、一步 1 档；小字号下标签与",
                 "数值同步缩放，卡片 / 单行 / 图标 / 皮肤四种布局都不裁切",
+                "**安装包瘦身 14.7MB**：预览壳不再打进 zip，改托管在 GitHub，首次点开",
+                "「实体预览」时自动多源下载并缓存（之后离线也能看，与地形同一套路）",
+                "在线下载（更新 / 预览壳 / 地形）镜像按实测重排：gh-proxy 最快放首选，",
+                "ghproxy.net 等多源自动兜底，单源限流或挂掉不影响使用",
             ]},
             {"t": CLG_FIX, "items": [
                 "**GSI 显示「已开启 · 等待游戏推送」却一直收不到数据**：现在会区分三种情况并写清楚——",
@@ -940,9 +944,38 @@ def _cloud_env(key, default=""):
     return (default if v is None else v).strip().rstrip("/")
 
 
-PV_URL = _cloud_env("FYS_PV_URL")
+# 预览壳云端源（2026-11-16 恢复云端按需分发，托管在 GitHub 主仓库 pv/ 目录）。
+# 多源逐试（与 update_bases / terr_cdn_bases 同一套路），gh-proxy 实测最快放首位；
+# FYS_PV_URL 环境变量可整体覆盖（逗号分隔多个源）。
+PV_BASES_DEFAULT = (
+    "https://gh-proxy.com/https://raw.githubusercontent.com/emmmmm0/FYS-Reward/main/pv,"
+    "https://raw.githubusercontent.com/emmmmm0/FYS-Reward/main/pv,"
+    "https://cdn.jsdelivr.net/gh/emmmmm0/FYS-Reward@main/pv,"
+    "https://ghproxy.net/https://raw.githubusercontent.com/emmmmm0/FYS-Reward/main/pv"
+)
+PV_URLS = [u for u in _cloud_env("FYS_PV_URL", PV_BASES_DEFAULT).split(",") if u]
+PV_URL = PV_URLS[0] if PV_URLS else ""     # 兼容旧引用：非空即视为「有云端壳可拉」
 PV_TIMEOUT = 180.0
 PV_NEED_MB = 16.3
+
+
+def _pv_open(suffix="", method="GET", timeout=6):
+    """按 PV_URLS 逐源请求预览壳相关文件，返回第一个成功的响应对象。
+
+    与 terr_fetch / update_check 同思路：绕开系统代理，源失败（DNS 污染 /
+    限流 403 / 超时）自动换下一个；全部失败抛最后一个异常（保留 code 属性，
+    上层靠它区分 404 / 网络）。"""
+    import urllib.request
+    op = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+    last = None
+    for base in PV_URLS:
+        try:
+            req = urllib.request.Request(base + suffix, method=method)
+            return op.open(req, timeout=timeout)
+        except Exception as e:                                 # noqa: BLE001
+            last = e
+            continue
+    raise last or RuntimeError("无预览壳云端源")
 # 同图异名（别名 → 壳内实际收录的图名）。
 # 地图库里有少部分图是同一个工坊条目的另一个名字（FYS 改过名 / 老版命名），
 # 壳内只收录其中一个名字。不做这层映射的话，这些图会被误标成「暂无实体预览」，
@@ -990,13 +1023,13 @@ _PV_REF = {"busy": False, "t": 0.0}
 
 def _pv_cloud_size():
     """HEAD 拿云端壳大小（不下载内容）。无云端源时返回 0。"""
-    if not PV_URL:
+    if not PV_URLS:
         return 0
-    import urllib.request
-    op = urllib.request.build_opener(urllib.request.ProxyHandler({}))
-    req = urllib.request.Request(PV_URL, method="HEAD")
-    with op.open(req, timeout=6) as r:
-        return int(r.headers.get("Content-Length") or 0)
+    try:
+        with _pv_open("", method="HEAD") as r:
+            return int(r.headers.get("Content-Length") or 0)
+    except Exception:                                          # noqa: BLE001
+        return 0
 
 
 def _pv_cloud_ver(fresh=False):
@@ -1008,16 +1041,13 @@ def _pv_cloud_ver(fresh=False):
     这个文件 / 断网）返回 ""，上层退回比大小。结果缓存 60 秒，fresh=True 强制刷。
     """
     now = time.time()
-    if not PV_URL:                 # 离线版：没有云端壳可对，永远不算过期
+    if not PV_URLS:                # 离线版：没有云端壳可对，永远不算过期
         return ""
     if not fresh and now - _PV_VER["t"] < 60:
         return _PV_VER["ver"]
     ver = ""
     try:
-        import urllib.request
-        op = urllib.request.build_opener(urllib.request.ProxyHandler({}))
-        req = urllib.request.Request(PV_URL + ".ver", method="GET")
-        with op.open(req, timeout=6) as r:
+        with _pv_open(".ver", method="GET") as r:
             ver = (r.read(128) or b"").decode("ascii", "ignore").strip()
     except Exception:                                          # noqa: BLE001
         ver = ""
@@ -1041,41 +1071,52 @@ def _pv_stale(local_size):
     判定优先级：① 云端有 ver 文件 → 与本地记录的 ver 比对（以内容为准：大小变了
     但内容相同不误判，大小没变但内容变了也能抓到）；② 云端没有 ver（老部署）或
     本地还没记录 → 退回比大小。结果缓存 60 秒；摸不到云端一律视为不过期（断网时
-    旧壳照常能用）。"""
+    旧壳照常能用）。
+
+    ⚠ 2026-11-16：探云改**后台线程**刷新。原来在请求线程里同步逐源试探，壳源
+    半残时（镜像限流 / DNS 飘）最多 4 源 × 6s = 24s+，把 /api/about 与
+    /api/preview 一起拖到客户端超时（冒烟实测 HTTP 0）。现在接口只读 60 秒
+    缓存并顺手起后台刷新，永不阻塞；首轮拿不到就按「不过期」放行（断网用户
+    旧壳照用，与原语义一致），刷新完成后的 60 秒内结果生效。"""
     now = time.time()
-    if not PV_URL:                 # 离线版：壳随包，无需判过期
+    if not PV_URLS:                # 离线版：壳随包，无需判过期
         _PV_STALE.update(t=now, stale=False)
         return False
     if now - _PV_STALE["t"] < 60:
         return _PV_STALE["stale"]
-    stale = False
-    cver = _pv_cloud_ver()
-    if cver:
-        lver = _pv_local_ver()
-        if lver:
-            stale = (lver != cver)
-            if stale:
-                log("[预览] 本地缓存过期（版本 %s → %s），将自动更新"
-                    % (lver[:12], cver[:12]))
-        else:
-            # 本地还没版本标记（老用户首次升到本版）：退回比大小，避免「大小其实
-            # 一样」时白下一次 16MB；下完会写入本地标记，之后走精确比对。
-            try:
+    _PV_STALE.update(t=now)        # 先占坑：60 秒内不重复起刷新线程
+    threading.Thread(target=_pv_stale_refresh, args=(local_size,),
+                     daemon=True, name="pv-stale").start()
+    return _PV_STALE["stale"]
+
+
+def _pv_stale_refresh(local_size):
+    """后台做真正的云端过期判定（见 _pv_stale），结果写回 _PV_STALE。"""
+    try:
+        stale = False
+        cver = _pv_cloud_ver()
+        if cver:
+            lver = _pv_local_ver()
+            if lver:
+                stale = (lver != cver)
+                if stale:
+                    log("[预览] 本地缓存过期（版本 %s → %s），将自动更新"
+                        % (lver[:12], cver[:12]))
+            else:
+                # 本地还没版本标记（老用户首次升到本版）：退回比大小，避免「大小其实
+                # 一样」时白下一次 16MB；下完会写入本地标记，之后走精确比对。
                 cl = _pv_cloud_size()
                 stale = bool(cl and cl != local_size)
-            except Exception:                                  # noqa: BLE001
-                stale = False
-    else:
-        try:
+        else:
             cl = _pv_cloud_size()
             stale = bool(cl and cl != local_size)
             if stale:
                 log("[预览] 本地缓存过期（本地 %.1f MB / 云端 %.1f MB），将自动更新"
                     % (local_size / 1048576.0, cl / 1048576.0))
-        except Exception:                                      # noqa: BLE001
-            stale = False
-    _PV_STALE.update(t=now, stale=stale)
-    return stale
+        _PV_STALE["stale"] = stale
+    except Exception as e:                                         # noqa: BLE001
+        log("[预览] 云端过期检查失败（按不过期处理）%r" % (e,))
+        _PV_STALE["stale"] = False
 
 
 def preview_fetch():
@@ -1089,17 +1130,15 @@ def preview_fetch():
                     return p, None
             except OSError:
                 pass
-        if not PV_URL:                 # 离线版：本地壳就是最终版，没有可拉的地方
+        if not PV_URLS:                # 离线版：本地壳就是最终版，没有可拉的地方
             _PV_PROG["phase"] = "error"
             return None, "offline"
         fp = os.path.join(BASE_DIR, PREVIEW_FILE)
         tmp = fp + ".part"
         try:
-            import urllib.request
             import hashlib
-            # 绕开系统代理（同 terr_fetch / update_check），否则大文件会卡死
-            op = urllib.request.build_opener(urllib.request.ProxyHandler({}))
-            with op.open(PV_URL, timeout=PV_TIMEOUT) as r:
+            # 多源逐试（绕开系统代理同 terr_fetch / update_check），否则大文件会卡死
+            with _pv_open("", timeout=PV_TIMEOUT) as r:
                 total = int(r.headers.get("Content-Length") or 0)
                 _PV_PROG.update(phase="download", got=0, total=total)
                 head = b""
@@ -2225,12 +2264,18 @@ def terr_fetch(name):
         tmp = fp + ".part"
         t0 = time.time()
         last_err = "offline"
+        # 总预算 30s（2026-11-16）：原来每源 25s、4 源串行最坏 100s 才答复，
+        # 镜像半残的晚上玩家点一张缺地形的图要干等一分半。预算只在「换源」时
+        # 检查，不会切断正在进行中的下载；超预算按网络失败答复（可重试）。
+        deadline = t0 + 30.0
         try:
             for base in bases:
+                if time.time() > deadline:
+                    break
                 url = base + "/" + urllib.parse.quote(name)
                 try:
                     req = urllib.request.Request(url, headers={"User-Agent": "FYS-Reward"})
-                    with urllib.request.urlopen(req, timeout=25) as r:
+                    with urllib.request.urlopen(req, timeout=12) as r:
                         data = r.read(TERR_MAX_MB * 1048576 + 1)
                     if not data:
                         raise ValueError("空响应")
