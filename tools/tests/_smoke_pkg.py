@@ -85,6 +85,11 @@ if __name__ == "__main__":
     # GSI 默认开启：冒烟时别去改用户真实 CS2 目录里的配置（只探测不写盘）
     env = dict(os.environ)
     env["FYS_GSI_NO_WRITE"] = "1"
+    # 冒烟要模拟「普通玩家机器」：开发机/CI 常带 HTTP(S)_PROXY 环境变量，
+    # 会让被测 exe 先走一个跟玩家无关的代理，测出来的耗时没有参考价值。
+    for k in ("HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY",
+              "http_proxy", "https_proxy", "all_proxy"):
+        env.pop(k, None)
     # --port 0：让系统随机挑端口（固定 8777 可能已被开发态实例占着 → 单实例预检会直接退出）
     proc = subprocess.Popen([dst, "--port", "0"], cwd=tmp, env=env,
                             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
@@ -183,7 +188,7 @@ if __name__ == "__main__":
         # 预览壳：2026-11-16 起**不随包**，首次请求触发云端按需下载（多源逐试）。
         # 网络挂时回落「缺失提示页」（HTTP 200 小体积）——断言只锁不变量：
         # 要么完整整页壳（顺带校验与 dev 源一致），要么明确的缺失提示，绝不半截。
-        local_shell = os.path.join(HERE, "..", "..", "preview3d.html")
+        local_shell = os.path.join(HERE, "preview3d.html")   # HERE = fys-reward/
         want = os.path.getsize(local_shell) if os.path.exists(local_shell) else 0
         t0 = time.time()
         c, raw = get("/preview3d", timeout=120)
