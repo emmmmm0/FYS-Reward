@@ -1,15 +1,16 @@
 {
  "ver": "v2.16",
  "date": "2026-11-10",
- "size": 6907826,
+ "size": 6907871,
  "file": "FYS-Reward-v2.16.exe",
  "urls": [
+  "https://gh-proxy.com/https://github.com/emmmmm0/FYS-Reward/releases/download/v2.16/FYS-Reward-v2.16.exe",
+  "https://cdn.jsdelivr.net/gh/emmmmm0/FYS-Reward@main/dist/FYS-Reward-v2.16.exe",
   "https://raw.githubusercontent.com/emmmmm0/FYS-Reward/main/dist/FYS-Reward-v2.16.exe",
   "https://ghproxy.net/https://github.com/emmmmm0/FYS-Reward/releases/download/v2.16/FYS-Reward-v2.16.exe",
-  "https://cdn.jsdelivr.net/gh/emmmmm0/FYS-Reward@main/dist/FYS-Reward-v2.16.exe",
   "https://github.com/emmmmm0/FYS-Reward/releases/download/v2.16/FYS-Reward-v2.16.exe"
  ],
- "sha256": "e9b9562326cc4e263a50b66ab938d5bcd7ad4830a40e470f656b180f5092762e",
+ "sha256": "4a9661b1b140ca13a7a3e87cbc4242a4b451d54794fc07301bb0ae56e62a4ecb",
  "notes": [
   "**对局战绩（「屏幕覆盖」页 → 📊 战绩分栏）**：开启 CS2 游戏状态集成后，每局自动",
   "记录地图 / 关卡 / 比分 / 时长 / K-D-A / 本局伤害，并可联动显示该图该关的",
