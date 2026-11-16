@@ -1603,6 +1603,7 @@ const meshCache = new Map();          // key -> {verts,idxs,o,s,nt}
 let meshErrKey = null;                // 地形外置分包加载失败的地图 key
 let meshErrMsg = '';                  // 失败文案（区分「下载失败」/「未收录」/「非软件内打开」）
 let meshHint = '';                    // 加载中提示（首次从云端下载时给出说明）
+let meshBar = '';                     // 地形下载进度条 HTML（下载进行中才有，随轮询刷新）
 function meshAvail(m){ return !!(m && (m.wm || m.f)); }
 /* 地形按图分包：优先 terr/<工坊ID>.bin（gzip 网格原始字节，比 base64 .js 省 33% 体积）；
    file:// 双击直开时 fetch 不可用，退回旧 terr/<工坊ID>.js 动态 <script> 注入。 */
@@ -1634,19 +1635,49 @@ function terrScript(wf){
       return;
     }
     /* v1.6：地形分包由软件后端按需从云端取（首次下载、之后走本地缓存）。
-       先问一句在不在缓存里，不在就提示「首次下载」——单张最大 0.67MB，约 1~2 秒。 */
+       先问一句在不在缓存里，不在就提示「首次下载」——单张最大 0.67MB，约 1~2 秒。
+       v2.16：下载进行中每半秒轮一次 /api/terr/info 拿实时进度，「设置」面板的
+       地形行渲染进度条——有没有在下载、下到哪、什么时候完，一眼可见。 */
+    let tm = null;                     // 进度轮询句柄（下载完/失败即停）
+    const stopTm = () => { if(tm){ clearInterval(tm); tm = null; } };
     fetch('/api/terr/info?wf=' + wf).then(r => r.ok ? r.json() : null).then(j => {
-      if(j && j.cached === false){ meshHint = '首次从云端下载地形…'; refreshMeshRow(); }
+      if(j && j.cached === false){
+        meshHint = '首次从云端下载地形…';
+        meshBar = '';
+        refreshMeshRow();
+        tm = setInterval(() => {
+          fetch('/api/terr/info?wf=' + wf).then(r => r.ok ? r.json() : null).then(j2 => {
+            const p = j2 && j2.prog;
+            if(p && (p.phase === 'connect' || p.phase === 'download')){
+              if(p.phase === 'connect'){ meshHint = '正在连接镜像源…'; meshBar = ''; }
+              else if(p.total){
+                const pct = Math.min(100, Math.round(p.got / p.total * 100));
+                meshHint = '首次从云端下载地形… ' + pct + '%';
+                meshBar = '<span style="display:inline-block;vertical-align:middle;'
+                  +'margin-left:6px;width:64px;height:5px;border-radius:3px;'
+                  +'background:rgba(128,128,128,.28);overflow:hidden">'
+                  +'<span style="display:block;height:100%;width:'+pct+'%;'
+                  +'background:var(--accent,#f2608d);transition:width .25s"></span></span>';
+              } else {
+                meshHint = '首次从云端下载地形… ' + ((p.got||0)/1024).toFixed(0) + ' KB';
+                meshBar = '';
+              }
+            } else { stopTm(); meshBar = ''; }
+            refreshMeshRow();
+          }).catch(() => {});
+        }, 500);
+      }
     }).catch(() => {});
     fetch('terr/' + wf + '.bin').then(r => {
       if(!r.ok) throw new Error(r.status === 502
         ? '地形下载失败' : 'terr/' + wf + '.bin 不存在');
       return r.arrayBuffer();
     }).then(buf => {
+      stopTm(); meshBar = '';
       const u8 = new Uint8Array(buf);
       if(!u8.length) throw new Error('分包为空');
       put(u8);
-    }).catch(rej);
+    }).catch(e => { stopTm(); rej(e); });
   });
 }
 function terrBytes(wf){
@@ -1662,6 +1693,7 @@ function refreshMeshRow(){
   if(!ok) st.textContent = '本地无源';
   else if(!S.wbox) st.textContent = '已关';
   else if(meshErrKey === S.key) st.textContent = meshErrMsg || '地形文件缺失';
+  else if(meshBar && !GL3D.meshCount) st.innerHTML = meshHint + meshBar;
   else st.textContent = GL3D.meshCount ? fmt(GL3D.meshCount) + ' 面'
                         : (meshHint || '加载中…');
   /* 实景材质行：仅本地有渲染网格数据的地图显示 */
