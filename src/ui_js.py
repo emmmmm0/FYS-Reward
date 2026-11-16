@@ -1335,18 +1335,25 @@ function pvReady(cb){
     /* 真实进度：半秒轮一次 /api/preview/progress（后端流式写盘并计数），拿到 total 就换确定进度条 */
     var paint=function(p){
       var bar;
-      if(p && p.phase==='download' && p.total){
-        var pct=Math.min(100,Math.round(p.got/p.total*100));
-        bar='<div style="margin-top:10px;width:230px;height:6px;border-radius:3px;'
-          +'background:var(--soft,#f2f2f2);overflow:hidden">'
-          +'<div style="height:100%;width:'+pct+'%;border-radius:3px;background:var(--accent,#f2608d);'
-          +'transition:width .3s"></div></div>'
-          +'<div style="font-size:var(--fs-xs);color:var(--muted,#999);margin-top:3px">'+pct+'% · '
-          +(p.got/1048576).toFixed(1)+' / '+(p.total/1048576).toFixed(1)+' MB</div>';
+      if(p && p.phase==='download'){
+        if(p.total){
+          var pct=Math.min(100,Math.round(p.got/p.total*100));
+          bar='<div style="margin-top:10px;width:230px;height:6px;border-radius:3px;'
+            +'background:var(--soft,#f2f2f2);overflow:hidden">'
+            +'<div style="height:100%;width:'+pct+'%;border-radius:3px;background:var(--accent,#f2608d);'
+            +'transition:width .3s"></div></div>'
+            +'<div style="font-size:var(--fs-xs);color:var(--muted,#999);margin-top:3px">'+pct+'% · '
+            +(p.got/1048576).toFixed(1)+' / '+(p.total/1048576).toFixed(1)+' MB</div>';
+        } else {
+          /* 镜像没回 Content-Length 也给真实已下载量，别让玩家对着空转条猜 */
+          bar=pvBar()
+            +'<div style="font-size:var(--fs-xs);color:var(--muted,#999);margin-top:3px">已下载 '
+            +((p.got||0)/1048576).toFixed(1)+' MB…</div>';
+        }
       } else { bar=pvBar(); }
       pvMask('<div style="font-weight:500">'+(upd?'预览数据有新版本，正在自动更新':'首次使用需要下载预览数据')+'</div>'
         +'<div style="font-size:var(--fs-sm);color:var(--muted,#999);line-height:1.7">'
-        +mb+' MB · 视网速约 20~40 秒<br>'+(upd?'更新完成后立即生效':'下载后保存在本地，以后打开就是秒开')+'</div>'+bar);
+        +(mb?mb+' MB · 视网速约 20~40 秒<br>':'')+(upd?'更新完成后立即生效':'下载后保存在本地，以后打开就是秒开')+'</div>'+bar);
     };
     paint(null);
     var pt=setInterval(function(){
@@ -1359,9 +1366,19 @@ function pvReady(cb){
       pvMaskOff();
       if(r && r.ok){ cb(true); }
       else{
+        /* 失败遮罩内直接给「重新加载」按钮——2026-11-16 反馈：原来文案让玩家去点
+           工具条上的按钮，但遮罩盖住了工具条，根本点不到 */
         pvMask('<div style="font-weight:500">预览数据下载失败</div>'
           +'<div style="font-size:var(--fs-sm);color:var(--muted,#999);line-height:1.7">'
-          +'请检查网络后点「🔄 重新加载」再试一次</div>');
+          +'请检查网络后点下方按钮再试一次</div>'
+          +'<button class="btn pri" id="pvRetry" style="margin-top:12px">🔄 重新加载</button>');
+        var rb=document.getElementById('pvRetry');
+        if(rb) rb.onclick=function(){
+          pvMask('<div style="font-weight:500">正在重新连接…</div>'+pvBar());
+          var f=$('preFrame');
+          if(f) f.removeAttribute('data-live');
+          preEmbedOn();
+        };
         cb(false);
       }
     }).catch(function(){
@@ -2254,6 +2271,7 @@ function fillAbout(d){
     }
   }
   var av=$('auVer'); if(av && a.version) av.textContent=a.version;
+  var sv=$('setUpdVer'); if(sv && a.version) sv.textContent='当前版本 '+a.version;
   /* 更新日志：about.changelog = [{ver,date,groups:[{t,items:[…]}]}, …]，新版本在最前。
      v2.2 起按「新增 / 优化 / 修复 / 移除」分组渲染；旧格式 items 扁平列表兼容回退。
      手风琴式——版本行可点开/收起，默认只展开当前版本；最早版本标「首发」，
@@ -2566,10 +2584,11 @@ function updModal(u){
     var b=$('updGo'); if(b) b.click();
   };
 }
-function checkUpdate(){
-  get('/api/update/check').then(function(u){
-    var bar=$('updBar'); if(!bar) return;
-    if(!u||!u.has_update){ bar.style.display='none'; return; }
+function showUpdBar(u){
+  /* 渲染设置页一键更新横幅（含下载进度/重试）。启动自动检查与设置页
+     「检查更新」按钮共用这一段（2026-11-16：更新入口集中到设置页）。 */
+  var bar=$('updBar'); if(!bar) return;
+  if(!u||!u.has_update){ bar.style.display='none'; return; }
     var mb=u.size?(u.size/1048576).toFixed(1)+'MB':'';
     bar.style.display='flex';
     bar.innerHTML='<span>🚀</span><span>发现新版本 <b>'+esc(u.ver||'')+'</b></span>'+
@@ -2604,9 +2623,38 @@ function checkUpdate(){
         bar.querySelector('small').textContent='更新失败：网络中断';
       });
     };
-    /* 启动弹窗提示：同一版本点过「稍后再说」（或点遮罩关闭）就不再弹 */
-    if(PREFS.upd_dismiss!==u.ver){ updModal(u); }
+    /* 启动弹窗提示（只在启动自动检查时弹）：同一版本点过「稍后再说」
+       （或点遮罩关闭）就不再弹；设置页手动检查不重复弹（结果就地显示） */
+}
+function checkUpdate(){
+  get('/api/update/check').then(function(u){
+    showUpdBar(u);
+    if(u && u.has_update && PREFS.upd_dismiss!==u.ver){ updModal(u); }
   }).catch(function(){});
+}
+function setUpdCheck(){
+  /* 设置页「检查更新」按钮：强制刷新（绕过 10 分钟缓存），结果就地反馈 */
+  var btn=$('setUpdBtn'), stat=$('setUpdStat');
+  if(!btn) return;
+  btn.disabled=true; btn.textContent='检查中…';
+  if(stat) stat.textContent='';
+  get('/api/update/check?force=1').then(function(u){
+    btn.disabled=false; btn.textContent='🔄 检查更新';
+    if(!u){ if(stat) stat.textContent='检查失败：网络问题，稍后再试'; return; }
+    if(u.offline){ if(stat) stat.textContent='当前离线，无法检查更新'; return; }
+    if(!u.has_update){
+      if(stat){ stat.textContent='已是最新版 ✓'; }
+      var bar=$('updBar'); if(bar) bar.style.display='none';
+      return;
+    }
+    if(stat) stat.textContent='发现新版本 '+esc(u.ver||'')+'，点「一键更新」即可';
+    showUpdBar(u);                       /* 就地渲染一键更新（含真实进度） */
+    var bar=$('updBar');
+    if(bar && bar.scrollIntoView) bar.scrollIntoView({behavior:'smooth',block:'center'});
+  }).catch(function(){
+    btn.disabled=false; btn.textContent='🔄 检查更新';
+    if(stat) stat.textContent='检查失败：网络问题，稍后再试';
+  });
 }
 /* 内置启动界面阶段文案（v2.15）：启动卡就在本页面里（#bootSplash），
    bootReal 各阶段顺手更新提示文字；页面没画启动卡时静默跳过。 */
@@ -2649,6 +2697,9 @@ function bootReal(){
   /* ── 上游数据更新提醒：横幅按钮 + 明细弹窗 + 设置开关 ── */
   $('updBView').onclick=openDiff;
   $('updBGo').onclick=function(){ triggerUpdSync($('updBSub')); };
+  /* ── 软件更新卡：随时手动检查是否最新版 ── */
+  var suBtn=$('setUpdBtn');
+  if(suBtn) suBtn.onclick=setUpdCheck;
   $('updBX').onclick=function(){
     /* 点了「知道了」立刻收起（不等下一轮轮询），状态仍由服务端 diffseen 落盘 */
     UPD_WANT=false; bannerApply();
