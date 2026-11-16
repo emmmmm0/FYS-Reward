@@ -1285,7 +1285,7 @@ function initView(){
 }
 
 /* ─── 地图实体预览（软件内内嵌视图 + 独立窗口备用） ───
-   预览页（preview3d.html，约 34MB）以 iframe 内嵌在 view-pre 里：进页才加载、
+   预览页（preview3d.html，约 14.7MB，按需下载）以 iframe 内嵌在 view-pre 里：进页才加载、
    离页自动 about:blank 释放 WebGL，避免常驻拖慢软件；「🪟 独立窗口」按钮走
    /api/ctl?do=openpreview 由后端拉起独立 pywebview 子进程窗口（可拖第二屏）。 */
 /* curMap：实时（离开服务器即清空）
@@ -2226,7 +2226,7 @@ function fillAbout(d){
   if(pEl){
     pEl.textContent = pvv.ready
       ? ('已就绪 · '+((pvv.size||0)/1048576).toFixed(1)+' MB'+(pvv.at?(' · '+pvv.at):''))
-      : '尚未就绪（重新解压完整压缩包可恢复）';
+      : '尚未就绪（打开预览会自动下载约 14.7MB）';
     pEl.title = pvv.path || '尚未下载';
   }
   window.__abPaths={dir:a.data_dir||'',log:a.log_path||''};
@@ -2258,7 +2258,7 @@ function fillAbout(d){
     var tcnt=tt.count||0, tmb=tt.mb||0;
     tEl.textContent = tcnt
       ? (tcnt+' / '+(tt.total||857)+' 张 · '+tmb.toFixed(1)+' MB')
-      : '尚未就绪（缺文件时重新解压完整压缩包）';
+      : '尚未就绪（打开某张图时会自动下载）';
     tEl.title = tcnt ? '已随包分发的地形分包，位于软件目录的 terr 文件夹' : '';
     if(tB){
       tB._last={cnt:tcnt, mb:tmb};
