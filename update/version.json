@@ -1,7 +1,7 @@
 {
  "ver": "v2.16",
  "date": "2026-11-10",
- "size": 6914347,
+ "size": 6917726,
  "file": "FYS-Reward-v2.16.exe",
  "urls": [
   "https://gh-proxy.com/https://raw.githubusercontent.com/emmmmm0/FYS-Reward/main/dist/FYS-Reward-v2.16.exe",
@@ -9,7 +9,7 @@
   "https://raw.githubusercontent.com/emmmmm0/FYS-Reward/main/dist/FYS-Reward-v2.16.exe",
   "https://ghproxy.net/https://raw.githubusercontent.com/emmmmm0/FYS-Reward/main/dist/FYS-Reward-v2.16.exe"
  ],
- "sha256": "56a1e8d2de329671aa25e054a4d89e5f48901d2a075a78a969c05936600a1e19",
+ "sha256": "f6b49be3fa6e8ef8fe3cc5c827908aaa9c42bffac689a631f4185297aee487c9",
  "intro": "v2.16 更新内容（下面每一条对应一个改动）：",
  "notes": [
   "**对局战绩（「屏幕覆盖」页 → 📊 战绩分栏）**：开启 CS2 游戏状态集成后，每局自动",
@@ -70,6 +70,10 @@
   "3D 视图只剩实体点、看不到地图；现在直接用工坊 ID 找 exe 旁 terr\\ 里",
   "的地形分包，857 张图的地形全部恢复",
   "补记：上一包（v2.15）打包时预览壳源文件没同步，「3D 视图拖拽旋转方向",
-  "反了」的修复实际没随包——本包起壳源纳入校验，旋转修复也真正生效"
+  "反了」的修复实际没随包——本包起壳源纳入校验，旋转修复也真正生效",
+  "**首次下载预览数据时进度条一直不出现**：首选镜像偶发挂起时原来要",
+  "干等 3 分钟才换下一个源，期间只有一条空转条；现在连接阶段就显示",
+  "「正在连接镜像源 …」30 秒自动换源，下到一半卡住的镜像也会被换掉，",
+  "真实下载一开始就切换成带百分比的进度条"
  ]
 }
