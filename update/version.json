@@ -1,7 +1,7 @@
 {
  "ver": "v2.16",
  "date": "2026-11-10",
- "size": 6910447,
+ "size": 6911760,
  "file": "FYS-Reward-v2.16.exe",
  "urls": [
   "https://gh-proxy.com/https://raw.githubusercontent.com/emmmmm0/FYS-Reward/main/dist/FYS-Reward-v2.16.exe",
@@ -9,7 +9,7 @@
   "https://raw.githubusercontent.com/emmmmm0/FYS-Reward/main/dist/FYS-Reward-v2.16.exe",
   "https://ghproxy.net/https://raw.githubusercontent.com/emmmmm0/FYS-Reward/main/dist/FYS-Reward-v2.16.exe"
  ],
- "sha256": "09365abb4268f91d77a91fceba55a4143573c1db121039826f54430544b3e202",
+ "sha256": "15960ab847bbee935aba54bd88502c7ab0eec97f7f0c99b45237cb25c22bf47c",
  "intro": "v2.16 更新内容（下面每一条对应一个改动）：",
  "notes": [
   "**对局战绩（「屏幕覆盖」页 → 📊 战绩分栏）**：开启 CS2 游戏状态集成后，每局自动",
@@ -47,6 +47,10 @@
   "「实体预览」时自动多源下载并缓存（之后离线也能看，与地形同一套路）",
   "在线下载（更新 / 预览壳 / 地形）镜像按实测重排：gh-proxy 最快放首选，",
   "ghproxy.net 等多源自动兜底，单源限流或挂掉不影响使用",
+  "**上游更新动态不再卡在旧记录**：后台比对失败（网络抖动）后 5 分钟",
+  "即重试（原来要傻等 30 分钟），动态更快跟上官方的最新改动",
+  "**地形下载失败提示更快恢复**：网络级失败只负缓存 2 分钟（原来 10",
+  "分钟内点开都秒失败且看不出原因），重试很快能拿到「首次下载」提示",
   "**GSI 显示「已开启 · 等待游戏推送」却一直收不到数据**：现在会区分三种情况并写清楚——",
   "游戏没开（等它启动）、配置写在游戏启动之后（提示「需要重启 CS2」，实测就是这条）、",
   "已经连上；同时放宽了 token 与 Host 头校验（CS2 不回传 auth 时也能正常接收）",
