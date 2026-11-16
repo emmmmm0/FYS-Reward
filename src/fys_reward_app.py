@@ -1666,8 +1666,8 @@ font-family:"Microsoft YaHei",system-ui,sans-serif;background:#fbf5f7;color:#3a2
 box-shadow:0 8px 24px rgba(190,120,150,.14);line-height:1.75;font-size:13.5px}
 h1{margin:0 0 10px;font-size:16px;color:#f2608d}code{background:#fdf1f5;border-radius:5px;padding:1px 5px}
 </style></head><body><div class="b"><h1>🗺 预览文件缺失</h1>
-实体预览页是压缩包里 exe 旁边的独立文件 <code>preview3d.html</code>（约 34MB），现在没找到它。<br>
-请重新解压完整压缩包，或把该文件放回 exe 同目录。</div></body></html>"""
+预览数据 <code>preview3d.html</code>（约 14.7MB）没能就位——多半是下载失败或文件被手动删了。<br>
+回软件重新打开「地图实体预览」会自动重下一次；也可以把该文件放回 exe 同目录。</div></body></html>"""
 
 
 # ══════════════════════════ 状态与服务 ══════════════════════════
@@ -2522,8 +2522,10 @@ def terr_fetch(name):
                 url = base + "/" + urllib.parse.quote(name)
                 try:
                     req = urllib.request.Request(url, headers={"User-Agent": "FYS-Reward"})
-                    # 单源超时不超过剩余预算：否则最后一个源的 12s 会突破 30s 总预算
-                    with urllib.request.urlopen(req, timeout=min(12.0, left)) as r:
+                    # 单源「等响应头」超时取 min(8s, 剩余预算)：4 个源串行时最坏也
+                    # 不会突破 30s 总预算（实测 12s 口径会到 36s，玩家等得太久）。
+                    # 只是等头，正文是分块读的，慢源照样能下完。
+                    with urllib.request.urlopen(req, timeout=min(8.0, left)) as r:
                         # 分块流式读：进度实时进 _TERR_PROG（壳内轮询渲染进度条）
                         total = int(r.headers.get("Content-Length") or 0)
                         _TERR_PROG.update(phase="download", got=0, total=total)
