@@ -1,43 +1,65 @@
-# 云朵小铺 · FYS ZE 通关奖励看板
+# ☁️ 云朵小铺 · FYS 通关奖励看板
 
-CS2（僵尸逃亡 ZE）风云社服务器的通关奖励查询工具：地图库、关卡奖励、服务器状态、
-屏幕覆盖小窗、对局战绩（CS2 GSI）与 3D 实体预览。
+**CS2 僵尸逃跑（ZE）玩家的奖励查询 + 直播覆盖工具。**
+打哪张图、哪一关能拿多少云点 / 龙晶，一抬头全知道。
 
-非官方工具，与 Valve / 风云社官方无关；奖励数值来自官方公开仓库，仅作查询用途。
+> 🎮 数据来自风云社官方公开仓库，仅作查询用途，与 Valve / 风云社官方无关。
 
-## 下载
+---
 
-- **推荐**：[Releases](https://github.com/emmmmm0/FYS-Reward/releases) 里下最新版
-  `云朵小铺-FYS通关奖励看板.zip`，解压后双击 `FYS-Reward.exe`（免安装，解压即用）
-- 老版本可在软件「设置 → 关于 → 检查更新」里升级（只替换 exe，`_internal` 与配置不动）
+## 📥 下载（免安装）
 
-## 目录
+1. 到 [**Releases**](https://github.com/emmmmm0/FYS-Reward/releases) 下载最新的 `云朵小铺-FYS通关奖励看板.zip`
+2. 解压到任意文件夹
+3. 双击 **`FYS-Reward.exe`**，完事
 
-| 路径 | 说明 |
+- 系统：Windows 10 / 11（64 位），无需安装 Python
+- 老用户：直接在软件里 **设置 → 关于 → 检查更新** 一键升级
+
+---
+
+## ✨ 能干什么
+
+| 功能 | 说明 |
 |---|---|
-| `src/` | 主程序源码（`fys_reward_app.py` 为入口） |
-| `build/` | 打包脚本 `build_dist.py`、PyInstaller spec、版本清单生成 `_mk_version.py` |
-| `tools/_upload_terr.py` | 上传 3D 地形分包到 `fys-terr` 仓库（客户端按需下载） |
-| `update/version.json` | **更新清单**：客户端「检查更新」读这一份 |
-| `dist/` | 各版本 exe（更新下载源，单文件 <20MB 才能走 jsDelivr） |
-| `docs_使用说明.txt` | 面向玩家的使用说明 |
+| 🏆 **通关奖励查询** | 当前地图每一关的云点 / 龙晶奖励、伤害转化比，进服自动识别，不用手选 |
+| 🖥️ **屏幕覆盖小窗** | 半透明小窗叠在游戏画面上（也能进 OBS 当直播素材），四种布局 + 自定义颜色字号 |
+| 📊 **对局战绩** | 开启 CS2 游戏状态集成（GSI）后，每局自动记录地图 / 关卡 / 比分 / K-D-A / 伤害 |
+| 🗺️ **地图库 + 3D 预览** | 全服地图一览，点开就能在软件里看这张图的 3D 实体预览 |
+| 🖧 **服务器列表** | 服务器在线状态 / 人数 / 地图，一目了然 |
+| 🔄 **数据自动同步** | 官方改了奖励参数？软件自动检测并更新，不用重新下载 |
 
-## 构建
+---
 
-Python 3.13 + PyInstaller（onedir，勿用 onefile）：
+## 🚀 快速上手
 
-```bat
-python build\build_dist.py           :: 打包到「云朵小铺-FYS通关奖励看板」
-python build\build_dist.py --full-terr  :: 离线整包（把地形也打进去，+284MB）
-```
+1. **进服** → 软件自动定位你所在的服务器和地图
+2. **想让它一直显示在屏幕上** → 左侧「屏幕覆盖」页打开开关
+3. **想记录战绩** → 「屏幕覆盖 → 战绩」页开启 GSI，然后**重启一次 CS2** 即可
 
-## 更新机制
+> 地图 3D 预览和地形文件按需联网下载（首次点开时自动缓存），之后离线也能看。
 
-- 客户端读 `update/version.json`，多源：jsDelivr → ghproxy → raw
-- 新版 exe 放 `dist/FYS-Reward-vX.Y.Z.exe`，清单里的 `urls` 同时给三个源
-- 下载后 sha256 强校验，不通过一律不替换
+---
 
-## 3D 地形
+## ❓ 常见问题
 
-安装包只带预览壳（`preview3d.html`）；地形（`terr/<工坊ID>.bin`，中位 0.4MB）在第一次
-点开某张图时按需下载并缓存，托管在 [fys-terr](https://github.com/emmmmm0/fys-terr)。
+<details>
+<summary><b>显示「未在服务器内」？</b></summary>
+还没进服，或者 CS2 没运行。进服后几秒内自动识别。
+</details>
+
+<details>
+<summary><b>GSI 开了却收不到数据？</b></summary>
+配置是在 CS2 启动时读取的——开启 GSI 后**重启一次 CS2** 就好。
+</details>
+
+<details>
+<summary><b>窗口白屏 / 打不开？</b></summary>
+删除软件目录 <code>data\startup.log</code> 后重试；仍不行请把该日志发给分享给你的人。
+</details>
+
+---
+
+## 🔗 相关仓库
+
+- [fys-terr](https://github.com/emmmmm0/fys-terr)：3D 预览地形分包（按需下载）
