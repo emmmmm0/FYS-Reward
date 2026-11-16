@@ -59,6 +59,8 @@ def main():
     ap.add_argument("--repo", required=True)
     ap.add_argument("--ver", required=True)
     ap.add_argument("--zip", default="")
+    ap.add_argument("--zip2", default="",
+                    help="第二个 zip 资产（全量版，2026-11-16 起发版两份 zip 并发）")
     ap.add_argument("--exe", default="")
     ap.add_argument("--manifest", default="version.json")
     ap.add_argument("--draft", action="store_true")
@@ -84,8 +86,9 @@ def main():
         body += [meta["intro"], ""]
     body += ["- " + it for it in items]
     body += ["", "### 下载", "",
-             "- `云朵小铺-FYS通关奖励看板.zip`：完整包（解压即用，免安装）",
-             "", "> 首次使用请下 zip；已在旧版的用户可在软件内直接检查更新。"]
+             "- `云朵小铺-FYS通关奖励看板.zip`：完整包（解压即用，免安装；3D 预览与地形联网自动下载）",
+             "- `%s-full.zip`：全量版（预览页 + 全部地形内置，离线也能看 3D，体积大很多）" % args.ver,
+             "", "> 首次使用推荐精简版；想完全离线就下全量版；已在旧版的用户可在软件内直接检查更新。"]
     body = "\n".join(body)
 
     if args.dry_run:
@@ -103,7 +106,7 @@ def main():
     rid, up = rel["id"], rel["upload_url"].split("{")[0]
     print("Release 已建:", rel["html_url"])
 
-    for p in (args.zip, args.exe):
+    for p in (args.zip, args.zip2, args.exe):
         if not p:
             continue
         if not os.path.exists(p):
@@ -111,7 +114,10 @@ def main():
             continue
         name = os.path.basename(p)
         if name.lower().endswith(".zip"):
-            name = "%s.zip" % args.ver           # ASCII 名，下载链接更稳
+            if "-全量版" in name:
+                name = "%s-full.zip" % args.ver      # 全量版资产名（ASCII）
+            else:
+                name = "%s.zip" % args.ver           # ASCII 名，下载链接更稳
         blob = open(p, "rb").read()
         u = "%s?name=%s" % (up, urllib.parse.quote(name))
         print("  上传 %s（%.1f MB）…" % (name, len(blob) / 1048576.0))
