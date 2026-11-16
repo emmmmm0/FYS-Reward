@@ -1,7 +1,7 @@
 {
  "ver": "v2.16",
  "date": "2026-11-10",
- "size": 6925990,
+ "size": 6926039,
  "file": "FYS-Reward-v2.16.exe",
  "urls": [
   "https://gh-proxy.com/https://raw.githubusercontent.com/emmmmm0/FYS-Reward/main/dist/FYS-Reward-v2.16.exe",
@@ -9,7 +9,7 @@
   "https://raw.githubusercontent.com/emmmmm0/FYS-Reward/main/dist/FYS-Reward-v2.16.exe",
   "https://ghproxy.net/https://raw.githubusercontent.com/emmmmm0/FYS-Reward/main/dist/FYS-Reward-v2.16.exe"
  ],
- "sha256": "afbeefc82a9d05cbf6ff5b79b06ec5b801eb950629957ead15ae28b84618f43a",
+ "sha256": "8012a55bfebb5cc3b11f9a258a8a871007dd3271d1b44cb9ba2a4eec750d93a9",
  "intro": "v2.16 更新内容（下面每一条对应一个改动）：",
  "notes": [
   "**对局战绩（「屏幕覆盖」页 → 📊 战绩分栏）**：开启 CS2 游戏状态集成后，每局自动",
