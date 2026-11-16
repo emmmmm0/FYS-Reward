@@ -116,6 +116,16 @@ def part_a():
     print("── A 段：preview_fetch 进度状态机（进程内 + 本地桩源）──")
     import fys_reward_app as A
 
+    # ⓪ 云端源地址形态（2026-11-16 事故回归）：源必须指到文件本体。
+    #    曾经只写到 .../pv 目录，而代码是 base+suffix → 实际请求目录地址，
+    #    四个源全部 404，开不开 VPN 都「下不下来」。
+    _bases = list(A.PV_URLS)
+    check("云端源都指到 preview3d.html 本体（不是目录）",
+          bool(_bases) and all(b.endswith("/preview3d.html") for b in _bases),
+          _bases[:1])
+    check("版本标记地址 = preview3d.html.ver",
+          all((b + ".ver").endswith("/preview3d.html.ver") for b in _bases), "")
+
     hang_port = free_port()
     slow_port = free_port()
     trk_port = free_port()
@@ -329,7 +339,7 @@ window.get = function(url){
     return Promise.resolve(JSON.parse(JSON.stringify(window.__fake)));
   }
   if(url.indexOf('/api/preview?')>=0 || /\\/api\\/preview$/.test(url)){
-    return Promise.resolve({ready:false, need:16.3});
+    return Promise.resolve({ready:false, need:14.7});
   }
   if(url.indexOf('/api/preview/fetch')>=0){
     return new Promise(function(res){ window.__fetchDone=res; });
@@ -370,13 +380,36 @@ window.get = function(url){
         ok = wait(ws, "document.getElementById('pvDl').style.display==='none'", secs=6)
         check("成功后遮罩关闭", ok is True, "")
 
+        # ④b 失败 →「重新加载」按钮真的重试（2026-11-16 两次反馈：点了没用）
+        #     旧实现里按钮只调 preEmbedOn()，iframe 指回 502，等于没点。
+        ev(ws, """
+window.__n=0;
+window.get=function(url){
+  if(url.indexOf('/api/preview/progress')>=0) return Promise.resolve({phase:'idle'});
+  if(url.indexOf('/api/preview/fetch')>=0){
+    window.__n++;
+    return Promise.resolve(window.__n===1?{ok:false}:{ok:true});
+  }
+  if(url.indexOf('/api/preview')>=0) return Promise.resolve({ready:false, need:14.7});
+  return Promise.reject(new Error('stub'));
+};
+""")
+        ev(ws, "pvReady(function(){})")
+        ok = wait(ws, "!!document.getElementById('pvRetry')", secs=8)
+        check("失败后出现「重新加载」按钮", ok is True, "")
+        ev(ws, "document.getElementById('pvRetry').click()")
+        ok = wait(ws, "window.__n>=2 && document.getElementById('pvDl').style.display==='none'",
+                  secs=10)
+        check("点「重新加载」会重新请求 fetch 并成功关闭遮罩", ok is True,
+              ev(ws, "window.__n"))
+
         # ⑤ 截图留档
         try:
             os.makedirs(SHOT, exist_ok=True)
             ev(ws, "window.__fake={phase:'download',got:12582912,total:16777216};"
                    "pvMask('<div style=\"font-weight:500\">首次使用需要下载预览数据</div>"
                    +"<div style=\"font-size:var(--fs-sm);color:var(--muted,#999);"
-                   +"line-height:1.7\">16.3 MB · 视网速约 20~40 秒<br>"
+                   +"line-height:1.7\">14.7 MB · 视网速约 20~40 秒<br>"
                    +"下载后保存在本地，以后打开就是秒开</div>');")
             time.sleep(0.5)
             send(ws, "Page.captureScreenshot",
