@@ -142,7 +142,9 @@ def main():
             name = ("%s-full.zip" % args.ver) if "-全量版" in name else ("%s.zip" % args.ver)
         return name
 
-    want = {asset_name(p) for p in (args.zip, args.zip2, args.exe) if p}
+    # ⚠ Release 只放 zip（2026-11-18 定）：onedir 的单文件 exe 离开 _internal
+    # 跑不起来，玩家下到会以为软件坏了。--exe 仅用于正文里的体积/校验，不上传。
+    want = {asset_name(p) for p in (args.zip, args.zip2) if p}
     c3, assets = req("GET", "%s/repos/%s/releases/%d/assets" % (API, args.repo, rid),
                      token, timeout=60)
     for a in (assets or []):
@@ -151,7 +153,7 @@ def main():
                         % (API, args.repo, a["id"]), token, timeout=60)
             print("  旧资产 %s 已删（%s）" % (a["name"], c4))
 
-    for p in (args.zip, args.zip2, args.exe):
+    for p in (args.zip, args.zip2):
         if not p:
             continue
         if not os.path.exists(p):
