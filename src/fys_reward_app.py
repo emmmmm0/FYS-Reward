@@ -158,6 +158,12 @@ CHANGELOG = [
                 "退回直连，VPN 开着时直连源也能正常下载",
                 "**下载提示的体积与实际文件对不上**：提示原来写死 16.3MB，而仓库里",
                 "的预览数据实为 14.7MB；现在按云端实测体积显示，不再写死",
+                "**屏幕覆盖小窗拖完位置存不住**：位置由覆盖窗自己随时落盘，主进程却",
+                "拿着启动时的旧坐标——拖完小窗再回设置页调字号/颜色，旧坐标就把新位置",
+                "覆盖成空值，重启自然回到默认角落；现在主进程保存设置一律以磁盘最新",
+                "坐标为准。另外原生分层窗退出时窗口已销毁仍会回写 0,0（再次打开跑到",
+                "屏幕左上角），已改为校验通过才回写；换分辨率或拔副屏后旧坐标落在",
+                "屏幕外时回退预设角落，不会再出现「开了小窗却看不到」",
             ]},
         ],
     },
@@ -1685,6 +1691,7 @@ class State:
     ov_user_close = False              # 用户在设置页点了「关闭覆盖」（区别于 ov_restart 自己触发的关闭）
     ovsize = None                      # 覆盖页报上来的目标尺寸 (w, h)
     ovcfg = None                       # 覆盖配置（fields/color/size/bg/x/y）
+    ovcfg_mtime = 0.0                  # overlay.json 上次读取/写入的 mtime（子进程会改它）
     ov_nosave = False                  # 重启覆盖窗期间临时屏蔽「关闭时回存位置」
     pvproc = None                      # 地图实体预览窗口（独立子进程）
     pvmap = ""                         # 预览窗当前打开的图（同图重开只聚焦不重建）
@@ -1985,13 +1992,52 @@ def ensure_ovcfg():
         if disk.get("livetxt_live"):
             purge_assistant_txt()
         State.ovcfg = cfg
+        try:
+            State.ovcfg_mtime = os.path.getmtime(_ovcfg_path())
+        except OSError:
+            State.ovcfg_mtime = 0.0
+    else:
+        # 覆盖子进程会随时改写 x/y（拖动停 1 秒就落盘）。主进程缓存若不跟着刷新，
+        # 同一次运行里再开小窗 / 切两种覆盖方式时就会拿启动时的旧坐标 → 又回默认位
+        # （2026-11-18 反馈）。这里只同步 x/y，其余键仍以主进程为准，避免子进程
+        # 缓存里的旧 color/size 反把主进程刚改的设置盖掉。
+        try:
+            mt = os.path.getmtime(_ovcfg_path())
+            if mt != State.ovcfg_mtime:
+                State.ovcfg_mtime = mt
+                with open(_ovcfg_path(), encoding="utf-8") as fh:
+                    disk = json.load(fh)
+                if isinstance(disk, dict) and "x" in disk:
+                    State.ovcfg["x"], State.ovcfg["y"] = disk.get("x"), disk.get("y")
+        except Exception:                                      # noqa: BLE001
+            pass
     return State.ovcfg
 
 
 _CFG_LOCK = threading.Lock()
 
 
-def save_ovcfg(cfg):
+def save_ovcfg(cfg, keep_pos=True):
+    """落盘覆盖配置。
+
+    keep_pos=True（默认）：x/y 一律以**磁盘上的最新值**为准。
+
+    ⚠ 2026-11-18 玩家反馈「小窗拖完重启又回默认位置」的真因之一就在这里：
+    位置是覆盖子进程自己在写的（拖动停 1 秒就落盘），而主进程内存里的
+    State.ovcfg 还是启动时读的旧 x/y。玩家拖完小窗、再回主界面调字号/颜色/
+    显示项时，ovsave 拿着内存旧值整份落盘 → 刚拖好的坐标被抹成 null。
+    所以这里写盘前先从磁盘合并 x/y；只有真正要写位置的调用
+    （_ov_save_pos / ovtkpos）才传 keep_pos=False。
+    """
+    if keep_pos and isinstance(cfg, dict):
+        try:
+            with open(_ovcfg_path(), encoding="utf-8") as fh:
+                disk = json.load(fh)
+            if isinstance(disk, dict) and "x" in disk:
+                cfg = dict(cfg)
+                cfg["x"], cfg["y"] = disk.get("x"), disk.get("y")
+        except Exception:                                      # noqa: BLE001
+            pass
     State.ovcfg = cfg
     try:
         os.makedirs(os.path.dirname(_ovcfg_path()), exist_ok=True)
@@ -2003,6 +2049,10 @@ def save_ovcfg(cfg):
             with open(tmp, "w", encoding="utf-8") as fh:
                 json.dump(cfg, fh, ensure_ascii=False, indent=2)
             os.replace(tmp, _ovcfg_path())
+            try:                       # 记下自己写入的 mtime，别让下一次 ensure 白重读
+                State.ovcfg_mtime = os.path.getmtime(_ovcfg_path())
+            except OSError:
+                pass
     except OSError as e:
         log("[覆盖配置] 保存失败：%r" % e)
 
@@ -3109,12 +3159,35 @@ def ov_preset_xy(pos):
     return int(x), int(y)
 
 
+def _ov_pos_on_screen(x, y):
+    """坐标是否还落在显示器的虚拟桌面内（含左侧/上方副屏的负坐标）。
+
+    换分辨率、拔掉副屏之后，上次保存的位置可能完全在屏幕外——直接照用会让
+    玩家「开了小窗却看不到」。这种就回退到预设角落，比黑屏强。
+    """
+    try:
+        import ctypes
+        u = ctypes.windll.user32
+        try:
+            u.SetProcessDPIAware()
+        except Exception:                                      # noqa: BLE001
+            pass
+        vx, vy = u.GetSystemMetrics(76), u.GetSystemMetrics(77)   # X/YVIRTUALSCREEN
+        vw, vh = u.GetSystemMetrics(78), u.GetSystemMetrics(79)   # CXVIRTUALSCREEN/CY
+        pad = 80                       # 容一点 DPI 逻辑/物理差，别把贴边位置误判
+        return (vx - pad <= x <= vx + vw + pad
+                and vy - pad <= y <= vy + vh + pad)
+    except Exception:                                          # noqa: BLE001
+        return True
+
+
 def ov_start_xy(cfg=None):
     """启动覆盖窗时的初始坐标：精确坐标 > 预设角落 > 左上角兜底。"""
     cfg = cfg if cfg is not None else ensure_ovcfg()
     try:
         if isinstance(cfg.get("x"), int) and isinstance(cfg.get("y"), int):
-            return int(cfg["x"]), int(cfg["y"])
+            if _ov_pos_on_screen(int(cfg["x"]), int(cfg["y"])):
+                return int(cfg["x"]), int(cfg["y"])
     except Exception:                                          # noqa: BLE001
         pass
     pos = cfg.get("ov_pos") or "rt"
@@ -3171,7 +3244,7 @@ def _ov_save_pos(win):
         if not isinstance(cfg, dict):
             return
         cfg["x"], cfg["y"] = int(win.x), int(win.y)
-        save_ovcfg(cfg)
+        save_ovcfg(cfg, keep_pos=False)   # 这里就是要写位置，别被磁盘旧值盖回来
         log("overlay child: 回存位置 x=%s y=%s" % (cfg["x"], cfg["y"]))
     except Exception:                                          # noqa: BLE001
         log("overlay child: 回存位置失败:\n" + traceback.format_exc())
@@ -4142,6 +4215,8 @@ def run_overlay_tk_child():
     wc.lpszClassName = "FysOverlayNative"
     user32.RegisterClassW(ctypes.byref(wc))
     x0, y0 = ov_start_xy(cfg)
+    log("overlay-tk child: 建窗 x=%s y=%s（cfg x=%r y=%r）"
+        % (x0, y0, cfg.get("x"), cfg.get("y")))
     hwnd = user32.CreateWindowExW(
         WS_EX_LAYERED | WS_EX_TOPMOST | WS_EX_TOOLWINDOW, "FysOverlayNative", "",
         WS_POPUP | WS_VISIBLE, x0, y0, 10, 10, None, None, hinst, None)
@@ -4547,9 +4622,14 @@ def run_overlay_tk_child():
     while user32.GetMessageW(ctypes.byref(msg), None, 0, 0) > 0:
         user32.TranslateMessage(ctypes.byref(msg))
         user32.DispatchMessageW(ctypes.byref(msg))
+    # 退出前最后一次回存。⚠ 必须确认 GetWindowRect 真的成功：窗口已销毁时它
+    # 返回 0 且 rc 保持全 0，发出去就是一条 x=0 y=0，把玩家拖好的位置重置成
+    # 屏幕左上角（2026-11-18 实测：tkinter 模式重启后跑到 (0,0) 就是这个）。
     rc = wintypes.RECT()
-    user32.GetWindowRect(hwnd, ctypes.byref(rc))
-    _tk_post(base, "/api/ctl?do=ovtkpos&x=%d&y=%d" % (rc.left, rc.top))
+    if user32.GetWindowRect(hwnd, ctypes.byref(rc)) and rc.right > rc.left:
+        _tk_post(base, "/api/ctl?do=ovtkpos&x=%d&y=%d" % (rc.left, rc.top))
+    else:
+        log("overlay-tk child: 退出时窗口已销毁，跳过位置回存")
     user32.ReleaseDC(None, hdc_screen)
     gdi32.DeleteDC(memdc)
     log("overlay-tk child: 退出")
@@ -5064,7 +5144,7 @@ def do_control(action, q=None):
                 y = int((q.get("y") or ["0"])[0])
                 cfg = ensure_ovcfg()
                 cfg["x"], cfg["y"] = x, y
-                save_ovcfg(cfg)
+                save_ovcfg(cfg, keep_pos=False)   # 写位置，别被磁盘旧值盖回来
             except (TypeError, ValueError):
                 pass
             return {"ok": True}
