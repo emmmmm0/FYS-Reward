@@ -1,7 +1,7 @@
 {
  "ver": "v2.16",
  "date": "2026-11-10",
- "size": 6926048,
+ "size": 6930683,
  "file": "FYS-Reward-v2.16.exe",
  "urls": [
   "https://gh-proxy.com/https://raw.githubusercontent.com/emmmmm0/FYS-Reward/main/dist/FYS-Reward-v2.16.exe",
@@ -9,7 +9,7 @@
   "https://raw.githubusercontent.com/emmmmm0/FYS-Reward/main/dist/FYS-Reward-v2.16.exe",
   "https://ghproxy.net/https://raw.githubusercontent.com/emmmmm0/FYS-Reward/main/dist/FYS-Reward-v2.16.exe"
  ],
- "sha256": "cebf392731935c06856498ea650d2368bb77bf731849784faf0d1bc3020664ee",
+ "sha256": "adb51467fa569898ab906390fe8d50cd8401ac1075b0dfce50a4c81d560981f1",
  "intro": "v2.16 更新内容（下面每一条对应一个改动）：",
  "notes": [
   "**对局战绩（「屏幕覆盖」页 → 📊 战绩分栏）**：开启 CS2 游戏状态集成后，每局自动",
@@ -82,7 +82,13 @@
   "把梯子关掉，被墙的源当然拿不到；现在检测到系统代理就先走代理、再",
   "退回直连，VPN 开着时直连源也能正常下载",
   "**下载提示的体积与实际文件对不上**：提示原来写死 16.3MB，而仓库里",
-  "的预览数据实为 14.7MB；现在按云端实测体积显示，不再写死"
+  "的预览数据实为 14.7MB；现在按云端实测体积显示，不再写死",
+  "**屏幕覆盖小窗拖完位置存不住**：位置由覆盖窗自己随时落盘，主进程却",
+  "拿着启动时的旧坐标——拖完小窗再回设置页调字号/颜色，旧坐标就把新位置",
+  "覆盖成空值，重启自然回到默认角落；现在主进程保存设置一律以磁盘最新",
+  "坐标为准。另外原生分层窗退出时窗口已销毁仍会回写 0,0（再次打开跑到",
+  "屏幕左上角），已改为校验通过才回写；换分辨率或拔副屏后旧坐标落在",
+  "屏幕外时回退预设角落，不会再出现「开了小窗却看不到」"
  ],
  "pv_size": 15402411
 }
