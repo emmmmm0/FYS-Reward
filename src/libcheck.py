@@ -65,8 +65,11 @@ inf_disk = build_index.load_infect()
 meta_disk = json.load(open(os.path.join(HERE, "data", "meta.json"), encoding="utf-8"))
 
 # 用真实索引对象喂真实接口代码（State.engine 即 reward_server 模块，STATE 结构一致）
+# wait_state：/api/maplib 等路由会先调它等首启就绪（v2.14 起真 engine 才有），
+# shim 缺了会让路由异常 → HTTP 断言全红（2026-11-21 补）。
 shim = SimpleNamespace(STATE={"maps": maps, "rewards": rewards, "knockback": kb,
-                             "infect": inf_disk, "meta": meta_disk, "srv_cache": None})
+                             "infect": inf_disk, "meta": meta_disk, "srv_cache": None},
+                       wait_state=lambda: None)
 fys_reward_app.State.engine = shim
 
 recs = fys_reward_app.maplib_records()
@@ -291,21 +294,30 @@ say("=" * 78)
 say("C. 数据层：击退表与边界情况")
 say("=" * 78)
 extra_kb = sorted(set(kb) - set(maps))
+stale_kb = sorted(set(kb) - set(maps) - set(_lm))
 no_rew = sorted(set(maps) - set(rewards))
 no_kb = sorted(set(maps) - set(kb))
 say("  仓库内击退同源文件：%s" % (gh_knock_names[:3] if gh_knock_names
                               else "无 → 该表来自官方直播助手，非本仓库"))
-check("击退表条数合理", 600 <= len(kb) <= 720, "%d 条" % len(kb))
+check("击退表条数合理", 600 <= len(kb) <= 760, "%d 条" % len(kb))
 bad_vals = [(k, v) for k, v in kb.items()
             if not isinstance(v, (int, float)) or not (0.1 <= float(v) <= 3.0)]
 check("击退系数值域 0.1~3.0", not bad_vals, "" if not bad_vals else str(bad_vals[:3]))
 check("击退表键全为小写地图名", all(k == k.lower() for k in kb))
+# 2026-11-21 起击退表直接同步自官方 cfg（_sync_mapcfg.py），本地补充层的图
+# （EXG 等）只要官方配了 cfg 也会有值 → 多出的键分两类：本地补充层图（正常展示）
+# 与官方已删除的残留键（不该出现在界面）。
+maps_all = set(maps) | set(_lm)
 cover = len(set(kb) & set(maps))
-say("  覆盖：%d / %d 张图有击退系数（%.1f%%）" % (cover, len(maps), cover * 100.0 / len(maps)))
-say("  击退表多出、地图池未收录的键（%d 个，界面不展示，属官方数据残留）：" % len(extra_kb))
+cover_all = len(set(kb) & maps_all)
+say("  覆盖：官方池 %d / %d（%.1f%%）· 全池 %d / %d（%.1f%%）"
+    % (cover, len(maps), cover * 100.0 / len(maps),
+       cover_all, len(maps_all), cover_all * 100.0 / len(maps_all)))
+say("  击退表多出、官方池未收录的键（%d 个；属本地补充层 %d、官方已删残留 %d）："
+    % (len(extra_kb), len(extra_kb) - len(stale_kb), len(stale_kb)))
 for k in extra_kb[:10]:
-    say("      %-34s 击退=%-4s 有奖励配置=%s" % (k, kb[k], k in rewards))
-check("多出的击退键不进入界面记录", not (set(extra_kb) & {r["f"] for r in recs}))
+    say("      %-34s 击退=%-4s 本地补充层=%s" % (k, kb[k], k in _lm))
+check("官方已删残留键不进入界面记录", not (set(stale_kb) & {r["f"] for r in recs}))
 say("  有地图设置但无奖励配置的图（%d 个）：%s" % (len(no_rew), no_rew))
 say("  无击退系数的图（%d 个）：%s" % (len(no_kb), no_kb))
 
