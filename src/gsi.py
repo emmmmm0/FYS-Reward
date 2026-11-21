@@ -17,6 +17,9 @@
 ⚠ 破坏性约定：GSI payload 里 player.state.round_totaldmg 是「本回合累计伤害」，
    回合结束会清零 —— 所以按回合号取 max 再累加（不是简单相加），
    这样同回合内的推送把值往上涨也不会重复计数。
+   （2026-11-21 起该值只用于回合数推断，「本局伤害」改按击杀数换算，
+   1 击杀 = 0.1w，见 DMG_PER_KILL —— ZE 打僵尸 bot 不进 round_totaldmg，
+   原口径的兑换括号永远算不出来。）
 """
 import ctypes
 import io
@@ -479,8 +482,16 @@ def _match_tick(s):
                 cur[k] = v
 
 
+# 「本局伤害」的换算口径（2026-11-21 玩家反馈定稿）：按**击杀数**算，1 击杀 = 0.1w。
+# 原因：round_totaldmg 统计的是「对敌方玩家造成的伤害」，ZE 里打的是僵尸 bot，
+# 这项几乎恒为 0 → 覆盖窗的兑换括号（N↑ / 还差多少）一直不显示；服务器结算
+# 用的口径是击杀僵尸数 × 0.1w，跟它对不上。dmg_by_round 仍照旧收集（rounds
+# 推断还要用），只是不再拿来当「本局伤害」。
+DMG_PER_KILL = 1000
+
+
 def _match_sum_dmg(cur):
-    return int(sum(cur.get("dmg_by_round", {}).values()))
+    return int(cur.get("kills") or 0) * DMG_PER_KILL
 
 
 def _match_finalize(reason="", keep=False):
@@ -538,7 +549,7 @@ def _match_roll_stale():
 
 def current_match():
     """当前正在进行的这一局（给覆盖窗显示「本局伤害 / K-D-A」）。
-    没有对局时返回 None；伤害是「每回合峰值累加」的口径（见 _match_tick）。"""
+    没有对局时返回 None；伤害按击杀数换算（1 击杀 = 0.1w，见 DMG_PER_KILL）。"""
     with _LOCK:
         cur = _CUR
         if not cur:
