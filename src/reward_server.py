@@ -634,7 +634,8 @@ def resolve():
         result["shown_stage"] = result["stage"]
 
     # ───── 7) 本局战绩（GSI）：覆盖窗显示「本局伤害 / K-D-A / 伤害兑换」 ─────
-    # 伤害口径 = 每回合 round_totaldmg 峰值累加（gsi._match_tick）。
+    # 伤害口径 = 击杀数 × 0.1w（gsi.DMG_PER_KILL，2026-11-21 起按玩家反馈换算；
+    # 原 round_totaldmg 口径打僵尸 bot 恒为 0，括号永远不显示）。
     # 兑换额按该图该关官方配置的「伤害 : 1 货币」比例向下取整，属于**推算**，
     # 界面上必须带「推算/参考」字样（实际以服务器结算为准）。
     try:
