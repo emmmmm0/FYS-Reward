@@ -1,35 +1,19 @@
 {
- "ver": "v2.17",
- "date": "2026-11-18",
- "size": 6930785,
- "file": "FYS-Reward-v2.17.exe",
+ "ver": "v2.18",
+ "date": "2026-11-21",
+ "size": 6931652,
+ "file": "FYS-Reward-v2.18.exe",
  "urls": [
-  "https://gh-proxy.com/https://raw.githubusercontent.com/emmmmm0/FYS-Reward/main/dist/FYS-Reward-v2.17.exe",
-  "https://cdn.jsdelivr.net/gh/emmmmm0/FYS-Reward@main/dist/FYS-Reward-v2.17.exe",
-  "https://raw.githubusercontent.com/emmmmm0/FYS-Reward/main/dist/FYS-Reward-v2.17.exe",
-  "https://ghproxy.net/https://raw.githubusercontent.com/emmmmm0/FYS-Reward/main/dist/FYS-Reward-v2.17.exe"
+  "https://gh-proxy.com/https://raw.githubusercontent.com/emmmmm0/FYS-Reward/main/dist/FYS-Reward-v2.18.exe",
+  "https://cdn.jsdelivr.net/gh/emmmmm0/FYS-Reward@main/dist/FYS-Reward-v2.18.exe",
+  "https://raw.githubusercontent.com/emmmmm0/FYS-Reward/main/dist/FYS-Reward-v2.18.exe",
+  "https://ghproxy.net/https://raw.githubusercontent.com/emmmmm0/FYS-Reward/main/dist/FYS-Reward-v2.18.exe"
  ],
- "sha256": "5eb110b740fadd8bb1ec79c0759d46c91cee1dacf29a7d0a3b2442b1117a4ae2",
- "intro": "v2.17 更新内容（下面每一条对应一个改动）：",
+ "sha256": "26ab16e76bb5f4ef3330cec9acd26874a5a16670af0226ad6944f2838c86c4dd",
+ "intro": "v2.18 更新内容（下面每一条对应一个改动）：",
  "notes": [
-  "**首次下载预览数据时进度条一直不出现**：首选镜像偶发挂起时原来要",
-  "干等 3 分钟才换下一个源，期间只有一条空转条；现在连接阶段就显示",
-  "「正在连接镜像源 …」30 秒自动换源，下到一半卡住的镜像也会被换掉，",
-  "真实下载一开始就切换成带百分比的进度条",
-  "**开不开 VPN 都下不来预览数据（最严重的一条）**：四个下载源的地址",
-  "只写到仓库目录 `.../pv`，程序实际请求的是目录地址，四个源全部 404，",
-  "所以从来就没成功过；现在地址指到文件本体，实测 11 秒下完并缓存",
-  "**开着 VPN 也不起作用**：程序为绕开系统代理一律强制直连，等于替你",
-  "把梯子关掉，被墙的源当然拿不到；现在检测到系统代理就先走代理、再",
-  "退回直连，VPN 开着时直连源也能正常下载",
-  "**下载提示的体积与实际文件对不上**：提示原来写死 16.3MB，而仓库里",
-  "的预览数据实为 14.7MB；现在按云端实测体积显示，不再写死",
-  "**屏幕覆盖小窗拖完位置存不住**：位置由覆盖窗自己随时落盘，主进程却",
-  "拿着启动时的旧坐标——拖完小窗再回设置页调字号/颜色，旧坐标就把新位置",
-  "覆盖成空值，重启自然回到默认角落；现在主进程保存设置一律以磁盘最新",
-  "坐标为准。另外原生分层窗退出时窗口已销毁仍会回写 0,0（再次打开跑到",
-  "屏幕左上角），已改为校验通过才回写；换分辨率或拔副屏后旧坐标落在",
-  "屏幕外时回退预设角落，不会再出现「开了小窗却看不到」"
+  "**屏幕覆盖小窗的兑换括号一直不显示（伤害口径错了）**：本局伤害原来按「对敌方玩家的伤害」统计，ZE 打的僵尸 bot 不计入，这项恒为 0，「通关云点 13（1↑）」「伤害云点 2.4w（0.3w）」的括号永远算不出来；现在按击杀数换算——1 击杀 = 0.1w，与服务器结算同口径",
+  "**鬼泣等一批地图查不到击退系数**：击退表还是 9 月从直播助手抄的 692 条快照；现在直接从官方公开仓库的地图配置全量同步：新增 37 张（鬼泣 1.0）、16 张按官方最新值更正；尸变参数表同步更正 1 张，官方没配击退的图仍显示「—」"
  ],
  "pv_size": 15402411
 }
