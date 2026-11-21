@@ -369,7 +369,7 @@ rgba(240,168,104,.3),#f0a868,#f0a868,rgba(240,168,104,.3));background-size:200% 
             地图、比分与本局伤害直接来自游戏本身；官方客户端没上报关卡时，按「CT 赢的回合数 + 1」推断并标注「比分推断」。
             不想用点右侧开关关掉，关掉后不再写配置。</div>
           <div class="sub ell" id="gsiPath">配置位置 —</div>
-          <div class="sub" style="margin-top:6px">本局伤害按每回合 <code>round_totaldmg</code> 峰值累加；小窗里
+          <div class="sub" style="margin-top:6px">本局伤害按击杀数换算（<b>1 击杀 = 0.1w</b>，与服务器结算同口径）；小窗里
             「通关云点 13（1↑）」是伤害换到的个数，「伤害云点 2.4w（0.3w）」是距下一档还差多少伤害。</div>
         </div>
 
